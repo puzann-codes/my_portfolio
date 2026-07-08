@@ -2,25 +2,219 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #0a0a0a;
+  --font-display: var(--font-archivo);
+  --font-hero: var(--font-unbounded);
+  --font-body: var(--font-inter);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+  --font-hero: var(--font-hero);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
+  scroll-behavior: auto;
+}
+
+html.lenis {
+  height: auto;
+}
+
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+.lenis.lenis-stopped {
+  overflow: hidden;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-body);
+  overflow-x: hidden;
+  cursor: none;
+}
+
+@media (hover: none), (pointer: coarse) {
+  body {
+    cursor: auto;
+  }
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-hero {
+  font-family: var(--font-hero);
+}
+
+/* ---------- hero name: char reveal + shimmer sweep ---------- */
+/* No `perspective` here on purpose: it (like `transform`/`filter`) always
+ * creates a stacking context, which would isolate `.ink-text` inside from
+ * blending against the ink canvas at all (text renders flat white-on-white
+ * and vanishes). Per-char perspective is applied via GSAP's
+ * transformPerspective instead, scoped to each .hero-char individually —
+ * those are descendants of the blended element, not ancestors, so they
+ * don't isolate it. */
+.hero-char {
+  display: inline-block;
+  transform-origin: 50% 100%;
+  will-change: transform, filter, opacity;
+}
+
+.hero-shimmer {
+  background-image: linear-gradient(
+    100deg,
+    transparent 44%,
+    rgba(255, 255, 255, 0.95) 50%,
+    transparent 56%
+  );
+  background-size: 300% 100%;
+  background-position: 200% 0;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  mix-blend-mode: screen;
+}
+
+.hero-shimmer.is-active {
+  animation: shimmer-sweep 4.2s ease-in-out infinite;
+  animation-delay: 1s;
+}
+
+@keyframes shimmer-sweep {
+  0%, 12% { background-position: 200% 0; }
+  55%, 100% { background-position: -100% 0; }
+}
+
+::selection {
+  background: #0a0a0a;
+  color: #fff;
+}
+
+/* ---------- custom cursor ---------- */
+.cursor-dot {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: #0a0a0a;
+  pointer-events: none;
+  z-index: 9999;
+  will-change: transform;
+  transition: opacity 0.2s ease, background-color 0.3s ease;
+  mix-blend-mode: difference;
+}
+
+.cursor-dot.is-hover {
+  transform-origin: center;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .cursor-dot {
+    display: none;
+  }
+}
+
+/* ---------- ink canvas ---------- */
+/* Deliberately no explicit z-index here. It's `position: fixed` and comes
+ * first in the DOM, so within the shared (root) stacking context it paints
+ * below the page content that follows it — which is what lets `.ink-text`
+ * below blend against it. Giving this (or a content wrapper) an explicit
+ * z-index would create a *new* stacking context and isolate mix-blend-mode
+ * to within it, cutting descendants off from blending against this canvas
+ * at all (text would render flat white-on-white and vanish). */
+.ink-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  mix-blend-mode: normal;
+}
+
+/* Any text wearing this inverts to white where the (black) ink canvas
+ * sits behind it, and reads as normal dark text everywhere else. */
+.ink-text {
+  color: #fff;
+  mix-blend-mode: difference;
+}
+
+/* ---------- shared utility ---------- */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.hairline {
+  height: 1px;
+  background: currentColor;
+  opacity: 0.15;
+}
+
+.reveal-mask {
+  overflow: hidden;
+}
+
+.pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6em;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0.9em 1.4em;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+  transition: background-color 0.45s cubic-bezier(0.16, 1, 0.3, 1), color 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  background: transparent;
+  color: var(--foreground);
+}
+
+.pill-btn:hover {
+  background: var(--foreground);
+  color: var(--background);
+}
+
+@keyframes fadein {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes grain {
+  0%, 100% { transform: translate(0, 0); }
+  10% { transform: translate(-2%, -4%); }
+  20% { transform: translate(-6%, 2%); }
+  30% { transform: translate(4%, -8%); }
+  40% { transform: translate(-6%, 6%); }
+  50% { transform: translate(-2%, 4%); }
+  60% { transform: translate(8%, 0%); }
+  70% { transform: translate(0%, 8%); }
+  80% { transform: translate(-4%, -2%); }
+  90% { transform: translate(4%, 6%); }
+}
+
+.grain {
+  position: fixed;
+  inset: -100px;
+  pointer-events: none;
+  z-index: 40;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation: grain 1s steps(2) infinite;
+  mix-blend-mode: multiply;
 }
