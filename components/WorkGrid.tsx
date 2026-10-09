@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import Link from "next/link";
 import { ALL_PROJECTS } from "@/data/projects";
 
 gsap.registerPlugin(ScrollTrigger);
@@ -48,9 +49,9 @@ export default function WorkGrid() {
   return (
     <div ref={gridRef} className="grid md:grid-cols-2 gap-x-8 gap-y-14 md:gap-y-20">
       {ALL_PROJECTS.map((p, i) => (
-        <a
+        <Link
           key={p.slug}
-          href="#"
+          href={`/work/${p.slug}`}
           data-cursor-hover
           className="work-card group block"
         >
@@ -85,7 +86,7 @@ export default function WorkGrid() {
               </span>
             ))}
           </div>
-        </a>
+        </Link>
       ))}
     </div>
   );

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Loader from "@/components/Loader";
 import Hero from "@/components/Hero";
+import DeskJourney from "@/components/DeskJourney";
 import GuitarShowcase from "@/components/GuitarShowcase";
 import Marquee from "@/components/Marquee";
 import Playground from "@/components/Playground";
@@ -13,30 +14,43 @@ const SESSION_KEY = "pb-portfolio-loaded";
 
 export default function Home() {
   const [showLoader, setShowLoader] = useState<boolean | null>(null);
-  const [ready, setReady] = useState(false);
+  // the loader has been dismissed (or was skipped): the lamp can come on
+  const [entered, setEntered] = useState(false);
+  const [progress, setProgress] = useState(0);
+  // no WebGL (or the scene failed to start): fall back to the flat hero
+  const [fallback, setFallback] = useState(false);
 
   useEffect(() => {
     // sessionStorage is only readable client-side, so the initial
-    // showLoader/ready state can't be computed during render/SSR.
+    // showLoader/entered state can't be computed during render/SSR.
     const hasLoaded = sessionStorage.getItem(SESSION_KEY);
     if (hasLoaded) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowLoader(false);
-      setReady(true);
+      setEntered(true);
     } else {
       setShowLoader(true);
     }
   }, []);
 
+  const handleLoad = useCallback((v: number) => setProgress((p) => Math.max(p, v)), []);
+  const handleUnsupported = useCallback(() => {
+    setFallback(true);
+    setProgress(1);
+  }, []);
   const handleDone = useCallback(() => {
     sessionStorage.setItem(SESSION_KEY, "1");
-    setReady(true);
+    setEntered(true);
   }, []);
 
   return (
     <main>
-      {showLoader && <Loader onDone={handleDone} />}
-      <Hero ready={ready || showLoader === false} />
+      {showLoader && <Loader progress={progress} onDone={handleDone} />}
+      {fallback ? (
+        <Hero ready={entered} />
+      ) : (
+        <DeskJourney go={entered} onLoad={handleLoad} onUnsupported={handleUnsupported} />
+      )}
       <Marquee />
       <GuitarShowcase />
       <Playground />

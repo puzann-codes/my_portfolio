@@ -15,7 +15,7 @@ const archivo = Archivo({
 
 const unbounded = Unbounded({
   variable: "--font-unbounded",
-  subsets: ["latin"],
+  subsets: ["latin", "latin-ext"],
   weight: ["600", "700", "800", "900"],
   display: "swap",
 });

@@ -176,6 +176,49 @@ class GuitarSynth {
     noise.stop(now + 0.1);
   }
 
+  /** Short noise burst through a band-pass: the lamp's switch, and (much
+   * quieter) a keycap. Silent until audio has been unlocked. */
+  private clickBurst(gainValue: number, freq: number, length: number) {
+    if (!this.enabled || !this.ctx || !this.master) return;
+    if (this.ctx.state !== "running") return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const buf = ctx.createBuffer(1, Math.max(1, Math.floor(ctx.sampleRate * length)), ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const filter = ctx.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.value = freq;
+    filter.Q.value = 1.1;
+    const g = ctx.createGain();
+    g.gain.value = gainValue;
+    src.connect(filter).connect(g).connect(this.master);
+    src.start(now);
+  }
+
+  click() {
+    this.clickBurst(0.9, 1800, 0.05);
+    // a low thunk under it
+    if (!this.enabled || !this.ctx || !this.master || this.ctx.state !== "running") return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.frequency.setValueAtTime(150, now);
+    osc.frequency.exponentialRampToValueAtTime(60, now + 0.08);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.35, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    osc.connect(g).connect(this.master);
+    osc.start(now);
+    osc.stop(now + 0.12);
+  }
+
+  tick() {
+    this.clickBurst(0.16 + Math.random() * 0.06, 2600 + Math.random() * 900, 0.018);
+  }
+
   /** A real recorded water-spill sample for the ink cursor trail — quiet
    * and textural, not a focal sound. Each play gets a small random
    * pitch/gain nudge so repeated triggers don't sound identical. Never

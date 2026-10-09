@@ -1,36 +1,166 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { type BlobShape, randomBlobShape, evolveShape, drawBlobPath } from "@/lib/blob";
+import { InkSim, INK_FLOATS } from "@/lib/ink-sim";
 import { guitarSynth } from "@/lib/audio";
 
-type Point = {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  birth: number;
-  radius: number;
-  shape: BlobShape;
-  angle: number;
-  stretch: number;
-  dark: boolean;
-};
+/* ------------------------------------------------------------------ *
+ * Pass 1 — every ink particle is drawn as a soft metaball kernel into a
+ * half-resolution float field (additive blend): R = ink density,
+ * G = density weighted by "wetness".
+ * Pass 2 — the field is thresholded into a crisp liquid silhouette with a
+ * ragged, paper-bleed edge, then lit from its own gradient (reconstructed
+ * normals) so fresh ink has glossy highlights that fade as it dries.
+ *
+ * The canvas sits ABOVE the page with mix-blend-mode: difference, and the
+ * ink is painted white — so it reads as black ink on light areas and as
+ * white ink on dark ones, with text flipping colour wherever ink covers it.
+ * ------------------------------------------------------------------ */
 
-const MAX_AGE = 1600; // ms before a splat is fully gone
-const BASE_RADIUS = 30;
-const MAX_POINTS = 340;
-const SHAPE_POINTS = 9;
-const SHAPE_MIN = 0.8;
-const SHAPE_MAX = 1.25;
-// Spawn a main-stream droplet roughly this often (px of cursor travel).
-// Dense + heavily overlapping is what reads as one continuous body of
-// ink following the path, instead of a chain of separate blobs.
-const STREAM_SPACING = 8;
-// Per-frame (@60fps) velocity decay for the main stream — small, since
-// laid-down ink mostly stays where it was drawn. Breakaway droplets
-// (below) get their own, much livelier, inertia.
-const FRICTION = 0.9;
+const VERT_ACC = `#version 300 es
+precision highp float;
+in vec2 aCorner;
+in vec2 aPos;
+in float aRad;
+in float aAng;
+in float aStretch;
+in float aWet;
+uniform vec2 uRes;
+out vec2 vUV;
+out float vWet;
+void main() {
+  const float K = 2.2;
+  float sx = aRad * sqrt(aStretch) * K;
+  float sy = aRad / sqrt(aStretch) * K;
+  vec2 local = vec2(aCorner.x * sx, aCorner.y * sy);
+  float c = cos(aAng);
+  float s = sin(aAng);
+  vec2 p = aPos + vec2(local.x * c - local.y * s, local.x * s + local.y * c);
+  gl_Position = vec4(p / uRes * 2.0 - 1.0, 0.0, 1.0);
+  vUV = aCorner;
+  vWet = aWet;
+}`;
+
+const FRAG_ACC = `#version 300 es
+precision highp float;
+in vec2 vUV;
+in float vWet;
+uniform float uGain;
+out vec4 o;
+void main() {
+  float d2 = dot(vUV, vUV);
+  if (d2 >= 1.0) discard;
+  float k = 1.0 - d2;
+  k = k * k * k * uGain;
+  o = vec4(k, k * vWet, 0.0, 0.0);
+}`;
+
+const VERT_FS = `#version 300 es
+precision highp float;
+void main() {
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+
+const FRAG_FINAL = `#version 300 es
+precision highp float;
+uniform sampler2D uField;
+uniform vec2 uCanvas;   // canvas size in device px
+uniform vec2 uCss;      // canvas size in css px
+uniform float uDpr;
+uniform float uTime;
+uniform float uThresh;
+out vec4 outColor;
+
+float hash(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+float vnoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x),
+             mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
+}
+float fbm(vec2 p) {
+  return 0.5 * vnoise(p) + 0.3 * vnoise(p * 2.03 + 11.7) + 0.2 * vnoise(p * 4.1 + 3.3);
+}
+
+void main() {
+  vec2 fc = gl_FragCoord.xy;
+  vec2 css = fc / uDpr;
+  vec2 uv = vec2(fc.x / uCanvas.x, 1.0 - fc.y / uCanvas.y);
+
+  // slow domain warp: the contour wobbles like a real liquid edge
+  vec2 warp = vec2(fbm(css * 0.05 + vec2(0.0, uTime * 0.03)),
+                   fbm(css * 0.05 + vec2(7.3, 3.1 - uTime * 0.03))) - 0.5;
+  vec2 uvw = uv + warp * 7.0 / uCss;
+
+  vec2 s = texture(uField, uvw).rg;
+  float f = s.r;
+
+  // fine paper-fibre grain on the threshold → slightly ragged, bled edge
+  float grain = fbm(css * 0.9) - 0.5;
+  float T = uThresh * (1.0 + grain * 0.22);
+  float aa = max(fwidth(f) * 0.85, 0.0025);
+  float a = smoothstep(T - aa, T + aa, f);
+  if (a <= 0.002) { outColor = vec4(0.0); return; }
+
+  // reconstructed surface normal from the field gradient
+  vec2 px = 1.6 / uCss;
+  float h0 = texture(uField, uvw + vec2(px.x, 0.0)).r;
+  float h1 = texture(uField, uvw - vec2(px.x, 0.0)).r;
+  float h2 = texture(uField, uvw + vec2(0.0, px.y)).r;
+  float h3 = texture(uField, uvw - vec2(0.0, px.y)).r;
+  vec2 grad = vec2(h0 - h1, h2 - h3);
+  vec3 n = normalize(vec3(-grad * 5.0 / uThresh, 1.0));
+
+  float wet = clamp(s.g / max(f, 0.001), 0.0, 1.0);
+  vec3 L = normalize(vec3(-0.5, -0.6, 0.65));   // up and to the left
+  vec3 H = normalize(L + vec3(0.0, 0.0, 1.0));
+  float nh = max(dot(n, H), 0.0);
+  float spec = pow(nh, 70.0) * 0.95 + pow(nh, 10.0) * 0.1;
+
+  // soft window reflection low on the thick parts
+  vec3 L2 = normalize(vec3(0.6, 0.7, 0.5));
+  float spec2 = pow(max(dot(n, normalize(L2 + vec3(0.0, 0.0, 1.0))), 0.0), 40.0) * 0.28;
+
+  float gloss = clamp((spec + spec2) * (0.25 + 0.75 * wet), 0.0, 0.82);
+  float c = 1.0 - gloss;
+  outColor = vec4(vec3(c) * a, a);
+}`;
+
+const FIELD_SCALE = 0.75;
+
+function compile(gl: WebGL2RenderingContext, type: number, src: string) {
+  const sh = gl.createShader(type);
+  if (!sh) return null;
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+    console.warn("ink shader:", gl.getShaderInfoLog(sh));
+    return null;
+  }
+  return sh;
+}
+
+function program(gl: WebGL2RenderingContext, vs: string, fs: string) {
+  const v = compile(gl, gl.VERTEX_SHADER, vs);
+  const f = compile(gl, gl.FRAGMENT_SHADER, fs);
+  if (!v || !f) return null;
+  const p = gl.createProgram();
+  if (!p) return null;
+  gl.attachShader(p, v);
+  gl.attachShader(p, f);
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+    console.warn("ink program:", gl.getProgramInfoLog(p));
+    return null;
+  }
+  return p;
+}
 
 export default function InkCursor() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -39,262 +169,282 @@ export default function InkCursor() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const prefersReduced = window.matchMedia(
-      "(prefers-reduced-motion: reduce)"
-    ).matches;
+    const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const isCoarse = window.matchMedia("(pointer: coarse)").matches;
     if (prefersReduced || isCoarse) return;
 
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    const gl = canvas.getContext("webgl2", {
+      alpha: true,
+      premultipliedAlpha: true,
+      antialias: false,
+      depth: false,
+      stencil: false,
+      powerPreference: "high-performance",
+    });
+    if (!gl) return;
 
-    let dpr = Math.min(window.devicePixelRatio || 1, 2);
-    let width = window.innerWidth;
-    let height = window.innerHeight;
+    const accProg = program(gl, VERT_ACC, FRAG_ACC);
+    const finalProg = program(gl, VERT_FS, FRAG_FINAL);
+    if (!accProg || !finalProg) return;
 
+    // ---- geometry: unit quad + per-particle instance buffer ----
+    const sim = new InkSim();    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+
+    const cornerBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, cornerBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    const aCorner = gl.getAttribLocation(accProg, "aCorner");
+    gl.enableVertexAttribArray(aCorner);
+    gl.vertexAttribPointer(aCorner, 2, gl.FLOAT, false, 0, 0);
+
+    const instBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, instBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, sim.instance.byteLength, gl.DYNAMIC_DRAW);
+    const stride = INK_FLOATS * 4;
+    const attribs: [string, number, number][] = [
+      ["aPos", 2, 0],
+      ["aRad", 1, 8],
+      ["aAng", 1, 12],
+      ["aStretch", 1, 16],
+      ["aWet", 1, 20],
+    ];
+    for (const [name, size, offset] of attribs) {
+      const loc = gl.getAttribLocation(accProg, name);
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, size, gl.FLOAT, false, stride, offset);
+      gl.vertexAttribDivisor(loc, 1);
+    }
+    const emptyVao = gl.createVertexArray();
+
+    // ---- field target (half float if the GPU can render to it) ----
+    const hasFloat =
+      !!gl.getExtension("EXT_color_buffer_float") ||
+      !!gl.getExtension("EXT_color_buffer_half_float");
+    const tex = gl.createTexture();
+    const fbo = gl.createFramebuffer();
+    let useFloat = hasFloat;
+    let fieldW = 0;
+    let fieldH = 0;
+
+    const allocField = (w: number, h: number) => {
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      const make = (float: boolean) => {
+        gl.texImage2D(
+          gl.TEXTURE_2D,
+          0,
+          float ? gl.RGBA16F : gl.RGBA8,
+          w,
+          h,
+          0,
+          gl.RGBA,
+          float ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE,
+          null
+        );
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+        return gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+      };
+      if (!(useFloat && make(true))) {
+        useFloat = false;
+        make(false);
+      }
+    };
+
+    let cssW = 0;
+    let cssH = 0;
+    let dpr = 1;
     const resize = () => {
-      width = window.innerWidth;
-      height = window.innerHeight;
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = width * dpr;
-      canvas.height = height * dpr;
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      cssW = window.innerWidth;
+      cssH = window.innerHeight;
+      dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      canvas.width = Math.round(cssW * dpr);
+      canvas.height = Math.round(cssH * dpr);
+      canvas.style.width = `${cssW}px`;
+      canvas.style.height = `${cssH}px`;
+      const fw = Math.ceil(cssW * FIELD_SCALE);
+      const fh = Math.ceil(cssH * FIELD_SCALE);
+      if (fw !== fieldW || fh !== fieldH) {
+        fieldW = fw;
+        fieldH = fh;
+        allocField(fw, fh);
+      }
     };
     resize();
     window.addEventListener("resize", resize);
 
-    const points: Point[] = [];
+    const uAcc = {
+      res: gl.getUniformLocation(accProg, "uRes"),
+      gain: gl.getUniformLocation(accProg, "uGain"),
+    };
+    const uFin = {
+      field: gl.getUniformLocation(finalProg, "uField"),
+      canvas: gl.getUniformLocation(finalProg, "uCanvas"),
+      css: gl.getUniformLocation(finalProg, "uCss"),
+      dpr: gl.getUniformLocation(finalProg, "uDpr"),
+      time: gl.getUniformLocation(finalProg, "uTime"),
+      thresh: gl.getUniformLocation(finalProg, "uThresh"),
+    };
+
+    // ---- pointer ----
+    const smooth = { x: 0, y: 0 };
     let last: { x: number; y: number; t: number } | null = null;
-    const smoothVel = { x: 0, y: 0 };
-    // The stream's shape "seed" evolves continuously rather than being
-    // re-randomized per stamp, so the ink's undulating edge flows
-    // smoothly along its length instead of jumping between unrelated
-    // random blobs — like one continuous fluid boundary.
-    let flowShape: BlobShape = randomBlobShape(SHAPE_POINTS, SHAPE_MIN, SHAPE_MAX);
-    // Slowly random-walks between ~0.7 and ~1.5 so the stream's width
-    // breathes unevenly along its length — real ink, not a uniform tube.
-    let flowWidth = 1;
-    let rafId = 0;
-    let visible = true;
+    let prevSp = 0;
     let lastSplashAt = 0;
-    const SPLASH_MIN_GAP = 130; // ms — keeps the ink-movement sound soothing, not chattery
+    let lastDown = 0;
+    const SPLASH_GAP = 130;
 
-    const isDarkZone = (x: number, y: number) => {
-      const el = document.elementFromPoint(x, y);
-      return !!el?.closest('[data-ink-zone="dark"]');
-    };
+    const handleSample = (x: number, y: number, t: number) => {
+      if (!last) {
+        last = { x, y, t };
+        sim.stroke(t, x, y, x + 0.01, y, 0);
+        return;
+      }
+      const dt = Math.max(t - last.t, 1);
+      const dx = x - last.x;
+      const dy = y - last.y;
+      const dist = Math.hypot(dx, dy);
+      // px per ~frame, clamped so a near-zero event gap can't fling ink
+      let sp = (dist / dt) * 16.67;
+      if (sp > 70) sp = 70;
+      smooth.x = smooth.x * 0.5 + (dx / dt) * 16.67 * 0.5;
+      smooth.y = smooth.y * 0.5 + (dy / dt) * 16.67 * 0.5;
+      const spS = Math.hypot(smooth.x, smooth.y);
 
-    const addPoint = (
-      x: number,
-      y: number,
-      vx: number,
-      vy: number,
-      radius: number,
-      shape: BlobShape,
-      angle: number,
-      stretch: number
-    ) => {
-      points.push({
-        x,
-        y,
-        vx,
-        vy,
-        birth: performance.now(),
-        radius,
-        shape,
-        angle,
-        stretch,
-        dark: isDarkZone(x, y),
-      });
-      if (points.length > MAX_POINTS) points.shift();
-    };
+      sim.stroke(t, last.x, last.y, x, y, sp);
 
-    /** One droplet of the continuous stream: stays close to where it was
-     * drawn (a little inertia so the trailing edge still eases to a
-     * stop), elongated along the direction of travel like a real fluid
-     * stroke rather than a stamped circle. */
-    const spawnStreamPoint = (
-      x: number,
-      y: number,
-      vx: number,
-      vy: number,
-      speed: number,
-      angle: number
-    ) => {
-      flowWidth += (Math.random() - 0.5) * 0.14;
-      flowWidth = Math.min(1.5, Math.max(0.7, flowWidth));
-      flowShape = evolveShape(flowShape, 0.1, SHAPE_MIN, SHAPE_MAX);
+      // hard stop out of a fast stroke: the ink slams forward in a splash
+      if (prevSp > 24 && sp < prevSp * 0.3 && dist > 0) {
+        sim.splat(t, x, y, Math.min(0.75, prevSp / 60), smooth.x, smooth.y);
+      }
+      prevSp = sp * 0.5 + prevSp * 0.5;
 
-      const speedBoost = 1 + Math.min(speed, 30) * 0.01;
-      const stretch = 1 + Math.min(speed, 30) * 0.035;
-      addPoint(
-        x,
-        y,
-        vx * 0.12 + (Math.random() - 0.5) * 0.5,
-        vy * 0.12 + (Math.random() - 0.5) * 0.5,
-        BASE_RADIUS * flowWidth * speedBoost,
-        flowShape,
-        angle,
-        stretch
-      );
-    };
-
-    /** Ink breaking away from the main stream and flicking off on its
-     * own — a small (but not speck-tiny) dab with a distinctly
-     * independent trajectory so it visibly separates over time, instead
-     * of every drop staying glued to the path. */
-    const spawnBreakaway = (x: number, y: number, vx: number, vy: number) => {
-      const angle = Math.random() * Math.PI * 2;
-      const kick = 5 + Math.random() * 8;
-      addPoint(
-        x + Math.cos(angle) * kick * 0.5,
-        y + Math.sin(angle) * kick * 0.5,
-        vx * 0.55 + Math.cos(angle) * kick,
-        vy * 0.55 + Math.sin(angle) * kick,
-        BASE_RADIUS * (0.5 + Math.random() * 0.35),
-        randomBlobShape(SHAPE_POINTS, SHAPE_MIN, SHAPE_MAX),
-        angle,
-        1.15
-      );
+      if (spS > 1.5 && t - lastSplashAt > SPLASH_GAP) {
+        lastSplashAt = t;
+        guitarSynth.splash((Math.random() - 0.5) * 200);
+      }
+      last = { x, y, t };
     };
 
     const onMove = (e: PointerEvent) => {
-      const x = e.clientX;
-      const y = e.clientY;
-      const now = performance.now();
-
-      if (last) {
-        const dt = Math.max(now - last.t, 1);
-        const dx = x - last.x;
-        const dy = y - last.y;
-        const dist = Math.hypot(dx, dy);
-
-        // velocity in px per ~frame (16.67ms), smoothed to avoid jitter.
-        // Clamped so a sub-millisecond event gap (synthetic input, a
-        // resumed/backgrounded tab, etc.) can't fling droplets off-screen.
-        const MAX_SPEED = 55;
-        const rawSpeed = (dist / dt) * 16.67;
-        const clampFactor = rawSpeed > MAX_SPEED ? MAX_SPEED / rawSpeed : 1;
-        const vx = ((dx / dt) * 16.67) * clampFactor;
-        const vy = ((dy / dt) * 16.67) * clampFactor;
-        smoothVel.x = smoothVel.x * 0.4 + vx * 0.6;
-        smoothVel.y = smoothVel.y * 0.4 + vy * 0.6;
-
-        const speed = Math.hypot(smoothVel.x, smoothVel.y);
-        const angle = dist > 0.5 ? Math.atan2(dy, dx) : 0;
-
-        // Walk along the path in small steps so fast strokes still lay
-        // down a continuous line instead of leaving gaps.
-        const steps = Math.max(1, Math.round(dist / STREAM_SPACING));
-        for (let i = 1; i <= steps; i++) {
-          const px = last.x + (dx * i) / steps;
-          const py = last.y + (dy * i) / steps;
-          spawnStreamPoint(px, py, smoothVel.x, smoothVel.y, speed, angle);
-
-          // Occasionally a bit of the stream splits off on its own —
-          // more likely the faster the cursor is moving.
-          if (Math.random() < Math.min(0.22, speed / 55)) {
-            spawnBreakaway(px, py, smoothVel.x, smoothVel.y);
-          }
-        }
-
-        // A soft droplet sound as the ink moves — throttled so it stays a
-        // soothing texture rather than firing on every single frame.
-        if (speed > 1.5 && now - lastSplashAt > SPLASH_MIN_GAP) {
-          lastSplashAt = now;
-          guitarSynth.splash((Math.random() - 0.5) * 200);
-        }
+      const events = e.getCoalescedEvents?.();
+      if (events && events.length > 1) {
+        for (const ev of events) handleSample(ev.clientX, ev.clientY, ev.timeStamp);
       } else {
-        spawnStreamPoint(x, y, 0, 0, 0, 0);
+        handleSample(e.clientX, e.clientY, e.timeStamp);
       }
+    };
 
-      last = { x, y, t: now };
+    const onDown = (e: PointerEvent) => {
+      const now = performance.now();
+      if (now - lastDown < 90) return;
+      lastDown = now;
+      const sp = Math.hypot(smooth.x, smooth.y);
+      sim.splat(now, e.clientX, e.clientY, 1, sp > 3 ? smooth.x : 0, sp > 3 ? smooth.y : 0);
+      guitarSynth.splash(0);
     };
 
     const onLeave = () => {
       last = null;
-      smoothVel.x = 0;
-      smoothVel.y = 0;
+      smooth.x = 0;
+      smooth.y = 0;
+      prevSp = 0;
     };
 
     window.addEventListener("pointermove", onMove, { passive: true });
-    window.addEventListener("pointerleave", onLeave);
+    window.addEventListener("pointerdown", onDown, { passive: true });
+    document.documentElement.addEventListener("mouseleave", onLeave);
 
+    let visible = !document.hidden;
     const onVisibility = () => {
       visible = !document.hidden;
+      if (!visible) {
+        sim.clear();
+        last = null;
+      }
     };
     document.addEventListener("visibilitychange", onVisibility);
 
-    let supportsFilter = true;
-    try {
-      ctx.filter = "blur(1px)";
-      ctx.filter = "none";
-    } catch {
-      supportsFilter = false;
-    }
-
+    // ---- loop ----
+    let rafId = 0;
     let lastFrame = performance.now();
+    let drewLastFrame = false;
+    const gain = useFloat ? 1 : 0.6;
+    const thresh = 0.5 * gain;
 
-    const draw = () => {
-      rafId = requestAnimationFrame(draw);
+    const frame = () => {
+      rafId = requestAnimationFrame(frame);
       if (!visible) return;
-
       const now = performance.now();
-      const frameScale = Math.min((now - lastFrame) / 16.67, 3);
+      const dtMs = now - lastFrame;
+      const dt = Math.min(dtMs / 16.67, 3);
       lastFrame = now;
 
-      ctx.clearRect(0, 0, width, height);
-      if (points.length === 0) return;
+      if (last) sim.rest(now, last.x, last.y, dtMs);
+      sim.update(now, dt);
 
-      if (supportsFilter) {
-        ctx.filter = "blur(15px) contrast(15)";
-      }
-
-      for (let i = points.length - 1; i >= 0; i--) {
-        const p = points[i];
-        const age = now - p.birth;
-        if (age > MAX_AGE) {
-          points.splice(i, 1);
-          continue;
+      if (sim.count === 0) {
+        if (drewLastFrame) {
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+          gl.viewport(0, 0, canvas.width, canvas.height);
+          gl.clearColor(0, 0, 0, 0);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+          canvas.style.visibility = "hidden";
+          drewLastFrame = false;
         }
-
-        // inertia: keep drifting in the direction it was flung, decelerating
-        p.x += p.vx * frameScale;
-        p.y += p.vy * frameScale;
-        p.vx *= Math.pow(FRICTION, frameScale);
-        p.vy *= Math.pow(FRICTION, frameScale);
-
-        const t = age / MAX_AGE;
-        const grow = Math.min(t / 0.12, 1);
-        const shrink = t < 0.2 ? 1 : 1 - Math.pow((t - 0.2) / 0.8, 2);
-        const radius = p.radius * (0.4 + grow * 0.6) * Math.max(shrink, 0);
-        const alpha = 1 - t;
-
-        if (radius <= 0.5) continue;
-
-        ctx.globalAlpha = supportsFilter ? 1 : alpha * 0.6;
-        ctx.fillStyle = p.dark
-          ? `rgba(255,255,255,${supportsFilter ? 1 : alpha})`
-          : `rgba(10,10,10,${supportsFilter ? 1 : alpha})`;
-        drawBlobPath(ctx, p.x, p.y, radius, p.shape, p.angle, p.stretch, 1);
+        return;
       }
+      if (!drewLastFrame) canvas.style.visibility = "visible";
+      drewLastFrame = true;
 
-      if (supportsFilter) {
-        ctx.filter = "none";
-      }
-      ctx.globalAlpha = 1;
+      // pass 1: accumulate metaball field
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.viewport(0, 0, fieldW, fieldH);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE);
+      gl.useProgram(accProg);
+      gl.uniform2f(uAcc.res, cssW, cssH);
+      gl.uniform1f(uAcc.gain, gain);
+      gl.bindVertexArray(vao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, instBuf);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, sim.instance, 0, sim.count * INK_FLOATS);
+      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, sim.count);
+
+      // pass 2: threshold + light
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.disable(gl.BLEND);
+      gl.useProgram(finalProg);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.uniform1i(uFin.field, 0);
+      gl.uniform2f(uFin.canvas, canvas.width, canvas.height);
+      gl.uniform2f(uFin.css, cssW, cssH);
+      gl.uniform1f(uFin.dpr, dpr);
+      gl.uniform1f(uFin.time, now / 1000);
+      gl.uniform1f(uFin.thresh, thresh);
+      gl.bindVertexArray(emptyVao);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
     };
-
-    rafId = requestAnimationFrame(draw);
+    canvas.style.visibility = "hidden";
+    rafId = requestAnimationFrame(frame);
 
     return () => {
       cancelAnimationFrame(rafId);
       window.removeEventListener("resize", resize);
       window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerleave", onLeave);
+      window.removeEventListener("pointerdown", onDown);
+      document.documentElement.removeEventListener("mouseleave", onLeave);
       document.removeEventListener("visibilitychange", onVisibility);
+      gl.getExtension("WEBGL_lose_context")?.loseContext();
     };
   }, []);
 

@@ -138,20 +138,18 @@ body {
 }
 
 /* ---------- ink canvas ---------- */
-/* Deliberately no explicit z-index here. It's `position: fixed` and comes
- * first in the DOM, so within the shared (root) stacking context it paints
- * below the page content that follows it — which is what lets `.ink-text`
- * below blend against it. Giving this (or a content wrapper) an explicit
- * z-index would create a *new* stacking context and isolate mix-blend-mode
- * to within it, cutting descendants off from blending against this canvas
- * at all (text would render flat white-on-white and vanish). */
+/* The ink is painted white on a transparent WebGL canvas that sits ABOVE the
+ * whole page with mix-blend-mode: difference. Over a light backdrop that
+ * reads as black ink; over a dark one (the 3D scene, dark sections) it
+ * reads as white ink; and any text under it flips colour automatically. */
 .ink-canvas {
   position: fixed;
   inset: 0;
+  z-index: 9000;
   width: 100vw;
   height: 100vh;
   pointer-events: none;
-  mix-blend-mode: normal;
+  mix-blend-mode: difference;
 }
 
 /* Any text wearing this inverts to white where the (black) ink canvas
@@ -209,6 +207,39 @@ body {
 .pill-btn.pill-btn-dark:hover {
   background: #fff;
   color: #0a0a0a;
+}
+
+/* ---------- boot loader ---------- */
+.boot-line {
+  opacity: 0;
+  transform: translateX(-8px);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.boot-line.is-on {
+  opacity: 1;
+  transform: none;
+}
+
+.boot-caret {
+  animation: caret 1s steps(1) infinite;
+}
+
+@keyframes caret {
+  50% { opacity: 0; }
+}
+
+/* ---------- journey: scroll hint ---------- */
+.scroll-line {
+  transform-origin: top;
+  animation: scroll-line 2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+@keyframes scroll-line {
+  0% { transform: scaleY(0); transform-origin: top; }
+  45% { transform: scaleY(1); transform-origin: top; }
+  55% { transform: scaleY(1); transform-origin: bottom; }
+  100% { transform: scaleY(0); transform-origin: bottom; }
 }
 
 /* ---------- Inky the mascot ---------- */
