@@ -7,11 +7,41 @@ export const STRING_NOTES = [
   { note: "E4", freq: 329.63 },
 ] as const;
 
+/** Fired once, the first time audio is actually unlocked — UI (like the
+ * guitar's sound-toggle button) listens for this instead of polling. */
+export const AUDIO_UNLOCKED_EVENT = "guitar-audio-unlocked";
+
 class GuitarSynth {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private unlocked = false;
   private primed = false;
+  // Explicit user preference — set false if they pick "continue without
+  // sound" on the loader, so nothing (guitar notes or ink splashes) ever
+  // plays even if the context happens to be technically unlocked.
+  private enabled = true;
+  private splashBuffer: AudioBuffer | null = null;
+  private splashBufferPromise: Promise<AudioBuffer | null> | null = null;
+  // Overlapping plays are capped so a fast flurry of pointer movement can't
+  // stack dozens of simultaneous copies of the sample into a wall of noise.
+  private activeSplashes = 0;
+  private static readonly MAX_CONCURRENT_SPLASHES = 3;
+
+  private loadSplashBuffer(ctx: AudioContext): Promise<AudioBuffer | null> {
+    if (this.splashBuffer) return Promise.resolve(this.splashBuffer);
+    if (this.splashBufferPromise) return this.splashBufferPromise;
+
+    this.splashBufferPromise = fetch("/sounds/water-spill.mp3")
+      .then((res) => res.arrayBuffer())
+      .then((buf) => ctx.decodeAudioData(buf))
+      .then((decoded) => {
+        this.splashBuffer = decoded;
+        return decoded;
+      })
+      .catch(() => null);
+
+    return this.splashBufferPromise;
+  }
 
   private ensureContext() {
     if (typeof window === "undefined") return null;
@@ -38,7 +68,9 @@ class GuitarSynth {
     const ctx = this.ensureContext();
     if (!ctx || !this.master) return;
     if (ctx.state === "suspended") ctx.resume();
+    const wasLocked = !this.unlocked;
     this.unlocked = true;
+    this.enabled = true;
 
     if (!this.primed) {
       this.primed = true;
@@ -50,13 +82,31 @@ class GuitarSynth {
       osc.start(now);
       osc.stop(now + 0.03);
     }
+
+    // Kick off the water-spill sample fetch/decode as soon as we have a
+    // real user gesture, so it's ready well before the first cursor splash.
+    this.loadSplashBuffer(ctx);
+
+    if (wasLocked) {
+      window.dispatchEvent(new Event(AUDIO_UNLOCKED_EVENT));
+    }
+  }
+
+  /** Explicit opt-out — "continue without sound" on the loader. */
+  disable() {
+    this.enabled = false;
   }
 
   get isUnlocked() {
     return this.unlocked;
   }
 
+  get isEnabled() {
+    return this.enabled;
+  }
+
   pluck(freq: number) {
+    if (!this.enabled) return;
     const ctx = this.ensureContext();
     if (!ctx || !this.master) return;
     if (ctx.state === "suspended") ctx.resume();
@@ -124,6 +174,43 @@ class GuitarSynth {
     osc.stop(now + duration + 0.1);
     osc2.stop(now + duration + 0.1);
     noise.stop(now + 0.1);
+  }
+
+  /** A real recorded water-spill sample for the ink cursor trail — quiet
+   * and textural, not a focal sound. Each play gets a small random
+   * pitch/gain nudge so repeated triggers don't sound identical. Never
+   * attempts to resume a suspended context itself (unlike pluck/unlock):
+   * this fires very frequently during ordinary mouse movement, which isn't
+   * a user gesture, so it should just stay silent until audio has been
+   * unlocked some other way. */
+  splash(variance = 0) {
+    if (!this.enabled || !this.ctx || !this.master) return;
+    if (this.ctx.state !== "running") return;
+    if (this.activeSplashes >= GuitarSynth.MAX_CONCURRENT_SPLASHES) return;
+
+    const ctx = this.ctx;
+    const buffer = this.splashBuffer;
+    if (!buffer) {
+      // Not decoded yet (e.g. splash() fired before unlock() finished
+      // fetching it) — kick off loading for next time, stay silent now.
+      this.loadSplashBuffer(ctx);
+      return;
+    }
+
+    const now = ctx.currentTime;
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.playbackRate.value = 0.92 + Math.random() * 0.16 + variance * 0.0002;
+
+    const gain = ctx.createGain();
+    gain.gain.value = 0.5 + Math.random() * 0.15;
+
+    source.connect(gain).connect(this.master);
+    this.activeSplashes++;
+    source.onended = () => {
+      this.activeSplashes = Math.max(0, this.activeSplashes - 1);
+    };
+    source.start(now);
   }
 }
 

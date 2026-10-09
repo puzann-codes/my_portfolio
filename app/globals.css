@@ -113,7 +113,13 @@ body {
   height: 10px;
   margin: -5px 0 0 -5px;
   border-radius: 50%;
-  background: #0a0a0a;
+  /* White + mix-blend-mode:difference (same trick as .ink-text) is what
+   * keeps this visible against ANY backdrop: difference(white bg, white
+   * dot) = black dot on light backgrounds, difference(black content,
+   * white dot) = white dot on dark ones. The previous #0a0a0a fill was
+   * the wrong color for this blend — it read as near-invisible against
+   * both white and black. */
+  background: #fff;
   pointer-events: none;
   z-index: 9999;
   will-change: transform;
@@ -188,6 +194,60 @@ body {
 .pill-btn:hover {
   background: var(--foreground);
   color: var(--background);
+}
+
+/* Used where the surrounding section has switched to a dark background
+ * (e.g. once the guitar's ink has fully spread) so the pill stays
+ * legible: light border/text at rest, inverts to solid white on hover.
+ * Compound selector (higher specificity than plain .pill-btn) so it
+ * reliably wins regardless of stylesheet ordering. */
+.pill-btn.pill-btn-dark {
+  color: #fff;
+  border-color: #fff;
+}
+
+.pill-btn.pill-btn-dark:hover {
+  background: #fff;
+  color: #0a0a0a;
+}
+
+/* ---------- Inky the mascot ---------- */
+.inky-body {
+  animation: inky-morph 6s ease-in-out infinite;
+}
+
+.inky-eye {
+  border-radius: 50%;
+  animation: inky-blink 5s infinite;
+  transform-origin: 50% 60%;
+}
+
+@keyframes inky-morph {
+  0%, 100% { border-radius: 58% 42% 52% 48% / 52% 56% 44% 48%; }
+  33% { border-radius: 46% 54% 44% 56% / 58% 44% 56% 42%; }
+  66% { border-radius: 52% 48% 58% 42% / 44% 52% 48% 56%; }
+}
+
+@keyframes inky-blink {
+  0%, 93%, 100% { transform: scaleY(1); }
+  96% { transform: scaleY(0.08); }
+}
+
+/* ---------- marquee ---------- */
+.marquee-outline {
+  color: transparent;
+  -webkit-text-stroke: 1.5px #0a0a0a;
+}
+
+/* ---------- wiggly link underline ---------- */
+.wiggle {
+  text-decoration: underline wavy transparent;
+  text-underline-offset: 5px;
+  transition: text-decoration-color 0.3s ease;
+}
+
+.wiggle:hover {
+  text-decoration-color: currentColor;
 }
 
 @keyframes fadein {

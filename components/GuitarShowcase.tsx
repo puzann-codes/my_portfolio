@@ -15,7 +15,8 @@ import {
   maxFillRadius,
 } from "@/lib/guitar";
 import { mixColor, smoothstep, lerp } from "@/lib/color";
-import { guitarSynth, STRING_NOTES } from "@/lib/audio";
+import { guitarSynth, STRING_NOTES, AUDIO_UNLOCKED_EVENT } from "@/lib/audio";
+import { type BlobShape, randomBlobShape, drawBlobPath } from "@/lib/blob";
 import { TOP_PROJECTS } from "@/data/projects";
 
 gsap.registerPlugin(ScrollTrigger);
@@ -39,6 +40,7 @@ type FillState = {
   maxRadius: number;
   startedAt: number;
   progress: number;
+  shape: BlobShape;
 };
 
 export default function GuitarShowcase() {
@@ -48,7 +50,9 @@ export default function GuitarShowcase() {
   const headingRef = useRef<HTMLDivElement | null>(null);
 
   const [activeIndex, setActiveIndex] = useState(-1);
-  const [showAudioHint, setShowAudioHint] = useState(false);
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [pageInked, setPageInked] = useState(false);
+  const pageInkedRef = useRef(false);
 
   const assemblyRef = useRef<AssemblyState>({
     soundholeScale: 0.001,
@@ -66,13 +70,18 @@ export default function GuitarShowcase() {
     maxRadius: 0,
     startedAt: 0,
     progress: 0,
+    shape: [],
   });
 
   useEffect(() => {
-    if (!showAudioHint) return;
-    const t = setTimeout(() => setShowAudioHint(false), 3200);
-    return () => clearTimeout(t);
-  }, [showAudioHint]);
+    // guitarSynth's unlocked flag lives outside React (module-level
+    // singleton), so it can only be read client-side on mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAudioUnlocked(guitarSynth.isUnlocked);
+    const onUnlocked = () => setAudioUnlocked(true);
+    window.addEventListener(AUDIO_UNLOCKED_EVENT, onUnlocked);
+    return () => window.removeEventListener(AUDIO_UNLOCKED_EVENT, onUnlocked);
+  }, []);
 
   // ------- scroll-triggered assembly -------
   useEffect(() => {
@@ -103,6 +112,12 @@ export default function GuitarShowcase() {
               duration: 0.9,
               stagger: 0.06,
               ease: "power4.out",
+              // Same fix as Hero.tsx: a lingering non-"none" transform
+              // (even translate(0,0)) isolates mix-blend-mode on these
+              // .ink-text elements, permanently flattening them to white
+              // instead of inverting against the ink. Clear it once the
+              // reveal finishes.
+              onComplete: () => gsap.set(headingTexts, { clearProps: "transform" }),
             });
           }
 
@@ -203,13 +218,21 @@ export default function GuitarShowcase() {
 
     const triggerFill = (vx: number, vy: number) => {
       if (fillRef.current.triggered) return;
+      const shape = randomBlobShape(13, 0.68, 1.35);
+      // The blob's reach varies by direction (radius * shape[i]), so a
+      // "radius" that only just reaches the farthest corner leaves gaps
+      // wherever the shape dips below 1 — that's what left an unfilled
+      // sliver behind. Scaling up by 1/min(shape) guarantees even the
+      // shortest arm still reaches full coverage at progress 1.
+      const minMul = Math.min(...shape);
       fillRef.current = {
         triggered: true,
         ox: vx,
         oy: vy,
-        maxRadius: maxFillRadius(vx, vy),
+        maxRadius: maxFillRadius(vx, vy) / minMul,
         startedAt: performance.now(),
         progress: 0,
+        shape,
       };
     };
 
@@ -232,7 +255,6 @@ export default function GuitarShowcase() {
         hoveredRef.current = closest;
         setActiveIndex(closest);
         if (closest !== -1) {
-          if (!guitarSynth.isUnlocked) setShowAudioHint(true);
           guitarSynth.pluck(STRING_NOTES[closest].freq);
         }
       }
@@ -243,7 +265,6 @@ export default function GuitarShowcase() {
     };
     const onDown = () => {
       guitarSynth.unlock();
-      setShowAudioHint(false);
     };
 
     canvas.addEventListener("pointermove", onPointerMove, { passive: true });
@@ -305,16 +326,22 @@ export default function GuitarShowcase() {
       const fill = fillRef.current;
       if (fill.triggered && fill.progress < 1) {
         fill.progress = Math.min(1, (performance.now() - fill.startedAt) / FILL_DURATION);
+        if (fill.progress >= 1 && !pageInkedRef.current) {
+          // Once the body is fully inked, let the dark spread carry on
+          // past the canvas — the rest of the page below settles into
+          // the same black the guitar just filled with.
+          pageInkedRef.current = true;
+          setPageInked(true);
+        }
       }
       const progress = fill.progress;
       const outline = mixColor(INK, PAPER, smoothstep(0.08, 0.55, progress));
 
-      // 1. expanding ink fill from the trigger point
+      // 1. expanding ink fill from the trigger point — an irregular
+      // silhouette growing outward, not a perfectly symmetrical circle
       if (fill.triggered && progress > 0) {
-        ctx.beginPath();
         ctx.fillStyle = INK;
-        ctx.arc(fill.ox, fill.oy, fill.maxRadius * progress, 0, Math.PI * 2);
-        ctx.fill();
+        drawBlobPath(ctx, fill.ox, fill.oy, fill.maxRadius * progress, fill.shape);
       }
 
       // 2. frets + inlay dots
@@ -396,7 +423,7 @@ export default function GuitarShowcase() {
     <section
       id="top-works"
       ref={sectionRef}
-      className="relative w-full pt-32 pb-32 md:pt-44 md:pb-40 overflow-hidden"
+      className="relative w-full pt-32 md:pt-44 overflow-hidden"
     >
       <div
         ref={headingRef}
@@ -404,14 +431,14 @@ export default function GuitarShowcase() {
       >
         <div className="flex items-end justify-between flex-wrap gap-6">
           <div>
-            <p className="ink-text font-display text-xs tracking-[0.25em] uppercase opacity-60 mb-3">
+            <p className="ink-text font-display text-xs tracking-[0.25em] uppercase mb-3">
               01 — Selected work
             </p>
             <h2 className="ink-text font-display font-black text-[10vw] md:text-[5.2vw] leading-[0.9] tracking-tight">
               My Top Works
             </h2>
           </div>
-          <p className="ink-text max-w-xs text-sm opacity-70 leading-relaxed">
+          <p className="ink-text max-w-xs text-sm leading-relaxed">
             Six strings, six projects. Move over the body — the ink takes
             over on its own. Hover a string to hear its note.
           </p>
@@ -420,19 +447,47 @@ export default function GuitarShowcase() {
 
       <div
         ref={canvasWrapRef}
-        className="relative w-full"
+        data-ink-zone={pageInked ? "dark" : undefined}
+        className={`relative w-full transition-colors duration-[1200ms] ease-out ${
+          pageInked ? "bg-[#0a0a0a]" : ""
+        }`}
         style={{ height: "min(78vh, 820px)" }}
         data-cursor-hover
       >
         <canvas ref={canvasRef} className="absolute inset-0 block w-full h-full" />
 
-        <div
-          className={`pointer-events-none absolute left-1/2 top-6 -translate-x-1/2 text-[11px] md:text-xs tracking-wide bg-black text-white px-3 py-1.5 rounded-full transition-all duration-500 ${
-            showAudioHint ? "opacity-90 translate-y-0" : "opacity-0 -translate-y-2"
+        <button
+          type="button"
+          onClick={() => guitarSynth.unlock()}
+          data-cursor-hover
+          aria-label={audioUnlocked ? "Sound is on" : "Enable sound to hear the strings"}
+          className={`absolute left-6 top-6 flex items-center gap-2 rounded-full bg-black text-white px-3.5 py-2 text-[11px] md:text-xs tracking-wide transition-all duration-500 ${
+            audioUnlocked
+              ? "opacity-0 -translate-y-2 pointer-events-none"
+              : "opacity-90 translate-y-0 hover:opacity-100"
           }`}
         >
-          Click anywhere first to hear the strings
-        </div>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M4 9v6h4l5 5V4L8 9H4z"
+              fill="currentColor"
+            />
+            <path
+              d="M16.5 8.5a5 5 0 0 1 0 7"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            />
+            <path
+              d="M19 6a9 9 0 0 1 0 12"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              opacity="0.6"
+            />
+          </svg>
+          Tap for sound
+        </button>
 
         <div className="pointer-events-none absolute inset-x-0 bottom-6 flex justify-center md:justify-end md:right-6 md:bottom-6 px-6 md:px-0">
           {activeProject ? (
@@ -474,11 +529,22 @@ export default function GuitarShowcase() {
         </div>
       </div>
 
-      <div className="max-w-[1400px] mx-auto px-6 md:px-10 mt-12 md:mt-16 flex justify-center">
-        <Link href="/work" className="pill-btn" data-cursor-hover>
-          More works
-          <span aria-hidden="true">→</span>
-        </Link>
+      <div
+        data-ink-zone={pageInked ? "dark" : undefined}
+        className={`w-full transition-colors duration-[1200ms] ease-out ${
+          pageInked ? "bg-[#0a0a0a]" : "bg-transparent"
+        }`}
+      >
+        <div className="max-w-[1400px] mx-auto px-6 md:px-10 pt-12 pb-32 md:pt-16 md:pb-40 flex justify-center">
+          <Link
+            href="/work"
+            className={`pill-btn ${pageInked ? "pill-btn-dark" : ""}`}
+            data-cursor-hover
+          >
+            More works
+            <span aria-hidden="true">→</span>
+          </Link>
+        </div>
       </div>
     </section>
   );

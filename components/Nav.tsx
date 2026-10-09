@@ -16,6 +16,9 @@ export default function Nav() {
         <a href="#top-works" data-cursor-hover className="hidden sm:inline">
           WORK
         </a>
+        <a href="#playground" data-cursor-hover className="hidden sm:inline">
+          PLAY
+        </a>
         <Link href="/work" data-cursor-hover>
           ALL PROJECTS
         </Link>

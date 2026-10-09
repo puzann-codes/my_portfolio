@@ -4,6 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import Loader from "@/components/Loader";
 import Hero from "@/components/Hero";
 import GuitarShowcase from "@/components/GuitarShowcase";
+import Marquee from "@/components/Marquee";
+import Playground from "@/components/Playground";
+import WhatIDo from "@/components/WhatIDo";
+import Footer from "@/components/Footer";
 
 const SESSION_KEY = "pb-portfolio-loaded";
 
@@ -33,7 +37,11 @@ export default function Home() {
     <main>
       {showLoader && <Loader onDone={handleDone} />}
       <Hero ready={ready || showLoader === false} />
+      <Marquee />
       <GuitarShowcase />
+      <Playground />
+      <WhatIDo />
+      <Footer />
     </main>
   );
 }

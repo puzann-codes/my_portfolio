@@ -64,7 +64,7 @@ export default function WorkGrid() {
           </div>
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h3 className="ink-text font-display font-bold text-xl md:text-2xl leading-tight mb-1 group-hover:opacity-60 transition-opacity">
+              <h3 className="ink-text font-display font-bold text-xl md:text-2xl leading-tight mb-1">
                 {p.title}
               </h3>
               <p className="text-sm opacity-55">

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { type BlobShape, randomBlobShape, evolveShape, drawBlobPath } from "@/lib/blob";
+import { guitarSynth } from "@/lib/audio";
 
 type Point = {
   x: number;
@@ -9,65 +11,26 @@ type Point = {
   vy: number;
   birth: number;
   radius: number;
-  /** Fixed-at-spawn radius multipliers around the circle, so each blob
-   * reads as an irregular ink splat instead of a perfect circle. */
-  shape: number[];
+  shape: BlobShape;
+  angle: number;
+  stretch: number;
+  dark: boolean;
 };
 
-const MAX_AGE = 1700; // ms before a splat is fully gone
-const BASE_RADIUS = 36;
-const MAX_POINTS = 220;
-const SHAPE_POINTS = 8;
-// Minimum cursor travel (px) between splash events. Gating spawns by
-// distance (instead of firing on every pointermove) is what keeps each
-// splash a distinct blob instead of a continuous painted bar.
-const MIN_SPAWN_DIST = 30;
-// Per-frame (@60fps) velocity decay. Total drift distance asymptotes to
-// v0 / (1 - FRICTION); with the velocity factors below this lands around
-// 90-160px of clearly visible "keeps sliding, then eases to a stop" travel.
-const FRICTION = 0.94;
-
-function randomShape(): number[] {
-  const shape: number[] = [];
-  for (let i = 0; i < SHAPE_POINTS; i++) {
-    shape.push(0.72 + Math.random() * 0.56);
-  }
-  return shape;
-}
-
-/** Draws a smooth, irregular closed blob through points placed around a
- * circle at randomized (but fixed-per-point) radii — a quadratic curve
- * through each pair's midpoint, same technique as the guitar body, so it
- * reads as one organic ink splat rather than a geometric circle. */
-function drawBlob(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  radius: number,
-  shape: number[]
-) {
-  const n = shape.length;
-  const pts = shape.map((m, i) => {
-    const angle = (i / n) * Math.PI * 2;
-    const r = radius * m;
-    return { x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r };
-  });
-
-  const start = {
-    x: (pts[n - 1].x + pts[0].x) / 2,
-    y: (pts[n - 1].y + pts[0].y) / 2,
-  };
-  ctx.beginPath();
-  ctx.moveTo(start.x, start.y);
-  for (let i = 0; i < n; i++) {
-    const cur = pts[i];
-    const next = pts[(i + 1) % n];
-    const mid = { x: (cur.x + next.x) / 2, y: (cur.y + next.y) / 2 };
-    ctx.quadraticCurveTo(cur.x, cur.y, mid.x, mid.y);
-  }
-  ctx.closePath();
-  ctx.fill();
-}
+const MAX_AGE = 1600; // ms before a splat is fully gone
+const BASE_RADIUS = 30;
+const MAX_POINTS = 340;
+const SHAPE_POINTS = 9;
+const SHAPE_MIN = 0.8;
+const SHAPE_MAX = 1.25;
+// Spawn a main-stream droplet roughly this often (px of cursor travel).
+// Dense + heavily overlapping is what reads as one continuous body of
+// ink following the path, instead of a chain of separate blobs.
+const STREAM_SPACING = 8;
+// Per-frame (@60fps) velocity decay for the main stream — small, since
+// laid-down ink mostly stays where it was drawn. Breakaway droplets
+// (below) get their own, much livelier, inertia.
+const FRICTION = 0.9;
 
 export default function InkCursor() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -104,47 +67,97 @@ export default function InkCursor() {
 
     const points: Point[] = [];
     let last: { x: number; y: number; t: number } | null = null;
-    let lastSpawn: { x: number; y: number } | null = null;
     const smoothVel = { x: 0, y: 0 };
+    // The stream's shape "seed" evolves continuously rather than being
+    // re-randomized per stamp, so the ink's undulating edge flows
+    // smoothly along its length instead of jumping between unrelated
+    // random blobs — like one continuous fluid boundary.
+    let flowShape: BlobShape = randomBlobShape(SHAPE_POINTS, SHAPE_MIN, SHAPE_MAX);
+    // Slowly random-walks between ~0.7 and ~1.5 so the stream's width
+    // breathes unevenly along its length — real ink, not a uniform tube.
+    let flowWidth = 1;
     let rafId = 0;
     let visible = true;
+    let lastSplashAt = 0;
+    const SPLASH_MIN_GAP = 130; // ms — keeps the ink-movement sound soothing, not chattery
 
-    const addPoint = (x: number, y: number, vx: number, vy: number, radius: number) => {
-      points.push({ x, y, vx, vy, birth: performance.now(), radius, shape: randomShape() });
+    const isDarkZone = (x: number, y: number) => {
+      const el = document.elementFromPoint(x, y);
+      return !!el?.closest('[data-ink-zone="dark"]');
+    };
+
+    const addPoint = (
+      x: number,
+      y: number,
+      vx: number,
+      vy: number,
+      radius: number,
+      shape: BlobShape,
+      angle: number,
+      stretch: number
+    ) => {
+      points.push({
+        x,
+        y,
+        vx,
+        vy,
+        birth: performance.now(),
+        radius,
+        shape,
+        angle,
+        stretch,
+        dark: isDarkZone(x, y),
+      });
       if (points.length > MAX_POINTS) points.shift();
     };
 
-    /** One splash event: a core droplet at the cursor position plus a
-     * tight cluster of similarly-large satellites huddled close around
-     * it — like a real ink drop hitting paper (one dense, congested
-     * splat), not dots scattered wide. Every droplet shares most of its
-     * motion with the cursor's own velocity (the "forward" term) so the
-     * whole cluster drifts together naturally; only a small radial
-     * nudge is added per-droplet so they don't all sit on one point. */
-    const spawnSplash = (x: number, y: number, vx: number, vy: number) => {
-      const speed = Math.hypot(vx, vy);
+    /** One droplet of the continuous stream: stays close to where it was
+     * drawn (a little inertia so the trailing edge still eases to a
+     * stop), elongated along the direction of travel like a real fluid
+     * stroke rather than a stamped circle. */
+    const spawnStreamPoint = (
+      x: number,
+      y: number,
+      vx: number,
+      vy: number,
+      speed: number,
+      angle: number
+    ) => {
+      flowWidth += (Math.random() - 0.5) * 0.14;
+      flowWidth = Math.min(1.5, Math.max(0.7, flowWidth));
+      flowShape = evolveShape(flowShape, 0.1, SHAPE_MIN, SHAPE_MAX);
 
+      const speedBoost = 1 + Math.min(speed, 30) * 0.01;
+      const stretch = 1 + Math.min(speed, 30) * 0.035;
       addPoint(
         x,
         y,
-        vx * 0.42 + (Math.random() - 0.5) * 2,
-        vy * 0.42 + (Math.random() - 0.5) * 2,
-        BASE_RADIUS * (0.95 + Math.random() * 0.5)
+        vx * 0.12 + (Math.random() - 0.5) * 0.5,
+        vy * 0.12 + (Math.random() - 0.5) * 0.5,
+        BASE_RADIUS * flowWidth * speedBoost,
+        flowShape,
+        angle,
+        stretch
       );
+    };
 
-      const dropletCount = speed > 18 ? 3 : speed > 8 ? 2 : 1;
-      for (let i = 0; i < dropletCount; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const outward = 3 + Math.random() * (3 + Math.min(speed, 30) * 0.25);
-        const forward = 0.3 + Math.random() * 0.35;
-        addPoint(
-          x + Math.cos(angle) * outward * 0.22,
-          y + Math.sin(angle) * outward * 0.22,
-          vx * forward + Math.cos(angle) * outward * 0.22,
-          vy * forward + Math.sin(angle) * outward * 0.22,
-          BASE_RADIUS * (0.6 + Math.random() * 0.42)
-        );
-      }
+    /** Ink breaking away from the main stream and flicking off on its
+     * own — a small (but not speck-tiny) dab with a distinctly
+     * independent trajectory so it visibly separates over time, instead
+     * of every drop staying glued to the path. */
+    const spawnBreakaway = (x: number, y: number, vx: number, vy: number) => {
+      const angle = Math.random() * Math.PI * 2;
+      const kick = 5 + Math.random() * 8;
+      addPoint(
+        x + Math.cos(angle) * kick * 0.5,
+        y + Math.sin(angle) * kick * 0.5,
+        vx * 0.55 + Math.cos(angle) * kick,
+        vy * 0.55 + Math.sin(angle) * kick,
+        BASE_RADIUS * (0.5 + Math.random() * 0.35),
+        randomBlobShape(SHAPE_POINTS, SHAPE_MIN, SHAPE_MAX),
+        angle,
+        1.15
+      );
     };
 
     const onMove = (e: PointerEvent) => {
@@ -156,11 +169,11 @@ export default function InkCursor() {
         const dt = Math.max(now - last.t, 1);
         const dx = x - last.x;
         const dy = y - last.y;
+        const dist = Math.hypot(dx, dy);
 
         // velocity in px per ~frame (16.67ms), smoothed to avoid jitter.
         // Clamped so a sub-millisecond event gap (synthetic input, a
         // resumed/backgrounded tab, etc.) can't fling droplets off-screen.
-        const dist = Math.hypot(dx, dy);
         const MAX_SPEED = 55;
         const rawSpeed = (dist / dt) * 16.67;
         const clampFactor = rawSpeed > MAX_SPEED ? MAX_SPEED / rawSpeed : 1;
@@ -168,11 +181,33 @@ export default function InkCursor() {
         const vy = ((dy / dt) * 16.67) * clampFactor;
         smoothVel.x = smoothVel.x * 0.4 + vx * 0.6;
         smoothVel.y = smoothVel.y * 0.4 + vy * 0.6;
-      }
 
-      if (!lastSpawn || Math.hypot(x - lastSpawn.x, y - lastSpawn.y) >= MIN_SPAWN_DIST) {
-        spawnSplash(x, y, smoothVel.x, smoothVel.y);
-        lastSpawn = { x, y };
+        const speed = Math.hypot(smoothVel.x, smoothVel.y);
+        const angle = dist > 0.5 ? Math.atan2(dy, dx) : 0;
+
+        // Walk along the path in small steps so fast strokes still lay
+        // down a continuous line instead of leaving gaps.
+        const steps = Math.max(1, Math.round(dist / STREAM_SPACING));
+        for (let i = 1; i <= steps; i++) {
+          const px = last.x + (dx * i) / steps;
+          const py = last.y + (dy * i) / steps;
+          spawnStreamPoint(px, py, smoothVel.x, smoothVel.y, speed, angle);
+
+          // Occasionally a bit of the stream splits off on its own —
+          // more likely the faster the cursor is moving.
+          if (Math.random() < Math.min(0.22, speed / 55)) {
+            spawnBreakaway(px, py, smoothVel.x, smoothVel.y);
+          }
+        }
+
+        // A soft droplet sound as the ink moves — throttled so it stays a
+        // soothing texture rather than firing on every single frame.
+        if (speed > 1.5 && now - lastSplashAt > SPLASH_MIN_GAP) {
+          lastSplashAt = now;
+          guitarSynth.splash((Math.random() - 0.5) * 200);
+        }
+      } else {
+        spawnStreamPoint(x, y, 0, 0, 0, 0);
       }
 
       last = { x, y, t: now };
@@ -180,7 +215,6 @@ export default function InkCursor() {
 
     const onLeave = () => {
       last = null;
-      lastSpawn = null;
       smoothVel.x = 0;
       smoothVel.y = 0;
     };
@@ -215,7 +249,7 @@ export default function InkCursor() {
       if (points.length === 0) return;
 
       if (supportsFilter) {
-        ctx.filter = "blur(13px) contrast(17)";
+        ctx.filter = "blur(15px) contrast(15)";
       }
 
       for (let i = points.length - 1; i >= 0; i--) {
@@ -241,8 +275,10 @@ export default function InkCursor() {
         if (radius <= 0.5) continue;
 
         ctx.globalAlpha = supportsFilter ? 1 : alpha * 0.6;
-        ctx.fillStyle = `rgba(10,10,10,${supportsFilter ? 1 : alpha})`;
-        drawBlob(ctx, p.x, p.y, radius, p.shape);
+        ctx.fillStyle = p.dark
+          ? `rgba(255,255,255,${supportsFilter ? 1 : alpha})`
+          : `rgba(10,10,10,${supportsFilter ? 1 : alpha})`;
+        drawBlobPath(ctx, p.x, p.y, radius, p.shape, p.angle, p.stretch, 1);
       }
 
       if (supportsFilter) {
