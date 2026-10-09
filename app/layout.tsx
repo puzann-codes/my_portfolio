@@ -1,10 +1,8 @@
 import type { Metadata } from "next";
-import { Archivo, Inter, Unbounded } from "next/font/google";
+import { Archivo, Caveat, Inter, Unbounded } from "next/font/google";
 import "./globals.css";
 import SmoothScroll from "@/components/SmoothScroll";
-import InkCursor from "@/components/InkCursor";
-import CustomCursor from "@/components/CustomCursor";
-import AudioUnlock from "@/components/AudioUnlock";
+import PrismCursor from "@/components/PrismCursor";
 
 const archivo = Archivo({
   variable: "--font-archivo",
@@ -17,6 +15,13 @@ const unbounded = Unbounded({
   variable: "--font-unbounded",
   subsets: ["latin", "latin-ext"],
   weight: ["600", "700", "800", "900"],
+  display: "swap",
+});
+
+const caveat = Caveat({
+  variable: "--font-hand",
+  subsets: ["latin"],
+  weight: ["400", "600"],
   display: "swap",
 });
 
@@ -41,13 +46,11 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${archivo.variable} ${unbounded.variable} ${inter.variable}`}
+      className={`${archivo.variable} ${unbounded.variable} ${inter.variable} ${caveat.variable}`}
     >
       <body className="min-h-full flex flex-col bg-[var(--background)] text-[var(--foreground)]">
         <div className="grain" aria-hidden="true" />
-        <InkCursor />
-        <CustomCursor />
-        <AudioUnlock />
+        <PrismCursor />
         <SmoothScroll>{children}</SmoothScroll>
       </body>
     </html>

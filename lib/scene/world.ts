@@ -1,33 +1,52 @@
 import * as THREE from "three";
-import { TOP_PROJECTS } from "@/data/projects";
 import { rng, nextFrame } from "./util";
-import { buildTerminal } from "./terminal";
-import { buildNeural } from "./neural";
+import { Atmosphere, type PaletteName } from "./sky";
 import { buildCity } from "./city";
 import { buildCrash } from "./crash";
-import { buildWorkshop } from "./workshop";
+import { buildNeural } from "./neural";
+import { buildAtlas } from "./atlas";
+import { buildNova } from "./nova";
+import { buildHarbor } from "./harbor";
+import { buildTerminal } from "./terminal";
 
 /**
- * "Inside the machine": one scene, five environments laid out along a
- * long corridor of the camera's path. Everything is monochrome — black
- * void, white hairlines, grey solids — so it stays architectural.
+ * "Inside the machine": a long corridor of environments, one per project and
+ * then the technical backdrop. Each has its own palette and time of day (see
+ * sky.ts); they blend as the camera travels, so it stays one continuous shot.
  */
+
+export type WorldEnv = { viewScale: number };
 
 export type World = {
   scene: THREE.Scene;
   pickables: THREE.Object3D[];
-  update(t: number, dt: number, p: number, cam: THREE.Vector3): void;
-  setHover(slug: string | null): void;
+  /** bloom strength for the current palette */
+  readonly bloom: number;
+  update(t: number, dt: number, p: number, cam: THREE.Vector3, env: WorldEnv): void;
+  setHover(id: string | null): void;
   dispose(): void;
 };
 
-// stage centres in world space
+// Stage centres in world space, in the order of the story: the projects,
+// then the terminal. `experience.ts` frames the camera relative to these.
 export const STAGE_POS = {
-  terminal: new THREE.Vector3(0, 6, -60),
-  neural: new THREE.Vector3(30, 10, -200),
-  city: new THREE.Vector3(-10, 0, -335),
-  crash: new THREE.Vector3(20, 0, -465),
-  workshop: new THREE.Vector3(0, 0, -600),
+  city: new THREE.Vector3(-10, 0, -120),
+  crash: new THREE.Vector3(20, 0, -280),
+  neural: new THREE.Vector3(30, 10, -440),
+  atlas: new THREE.Vector3(0, 6, -600),
+  nova: new THREE.Vector3(0, 5, -760),
+  harbor: new THREE.Vector3(0, 0, -920),
+  terminal: new THREE.Vector3(0, 6, -1060),
+};
+
+const PALETTE_OF: Record<keyof typeof STAGE_POS, PaletteName> = {
+  city: "city",
+  crash: "crash",
+  neural: "neural",
+  atlas: "atlas",
+  nova: "nova",
+  harbor: "harbor",
+  terminal: "terminal",
 };
 
 export async function buildWorld(opts: {
@@ -37,100 +56,112 @@ export async function buildWorld(opts: {
 }): Promise<World> {
   const { quality, fonts, progress } = opts;
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x000000);
-  scene.fog = new THREE.FogExp2(0x000000, 0.009);
 
-  // lighting shared by the lit environments (city, crash)
-  scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-  const sun = new THREE.DirectionalLight(0xffffff, 2.1);
-  sun.position.set(-40, 80, 50);
-  scene.add(sun);
-  const fill = new THREE.DirectionalLight(0xbfc4d0, 0.5);
-  fill.position.set(40, 20, -30);
-  scene.add(fill);
+  const order = Object.keys(STAGE_POS) as (keyof typeof STAGE_POS)[];
+  const atmosphere = new Atmosphere(
+    scene,
+    order.map((k) => ({ name: PALETTE_OF[k], z: STAGE_POS[k].z }))
+  );
 
   // drifting motes along the whole corridor (parallax while travelling)
   const R = rng(3);
-  const N = quality === "high" ? 900 : 400;
+  const N = quality === "high" ? 1500 : 600;
   const pos = new Float32Array(N * 3);
   for (let i = 0; i < N; i++) {
-    pos[i * 3] = (R() - 0.5) * 220;
-    pos[i * 3 + 1] = -20 + R() * 100;
-    pos[i * 3 + 2] = 60 - R() * 700;
+    pos[i * 3] = (R() - 0.5) * 260;
+    pos[i * 3 + 1] = -20 + R() * 120;
+    pos[i * 3 + 2] = 60 - R() * 1300;
   }
   const mGeo = new THREE.BufferGeometry();
   mGeo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   const mMat = new THREE.PointsMaterial({
     color: 0xffffff,
-    size: 1.3,
+    size: 1.2,
     sizeAttenuation: false,
     transparent: true,
-    opacity: 0.35,
+    opacity: 0.28,
     depthWrite: false,
   });
   scene.add(new THREE.Points(mGeo, mMat));
 
-  progress(0.02, "terminal");
-  await nextFrame();
-  const terminal = buildTerminal();
-  terminal.group.position.copy(STAGE_POS.terminal);
-  scene.add(terminal.group);
+  const stages: {
+    key: keyof typeof STAGE_POS;
+    group: THREE.Group;
+    radius: number;
+    update: (t: number, dt: number, cam: THREE.Vector3, env: WorldEnv, fog: THREE.FogExp2) => void;
+    pickables: THREE.Object3D[];
+    setHover: (id: string | null) => void;
+    dispose: () => void;
+  }[] = [];
 
-  progress(0.18, "neural");
-  await nextFrame();
-  const neural = buildNeural({ quality });
-  neural.group.position.copy(STAGE_POS.neural);
-  scene.add(neural.group);
-
-  progress(0.32, "city");
-  await nextFrame();
-  const city = buildCity({ quality, fonts });
-  city.group.position.copy(STAGE_POS.city);
-  scene.add(city.group);
-
-  progress(0.52, "crash");
-  await nextFrame();
-  const crash = buildCrash();
-  crash.group.position.copy(STAGE_POS.crash);
-  scene.add(crash.group);
-
-  progress(0.7, "workshop");
-  await nextFrame();
-  const workshop = buildWorkshop(
-    TOP_PROJECTS.map((p) => ({ slug: p.slug, title: p.title })),
-    { quality }
-  );
-  workshop.group.position.copy(STAGE_POS.workshop);
-  scene.add(workshop.group);
-  progress(1, "world");
-
-  // only update/draw what's near the camera
-  const groups: [THREE.Group, THREE.Vector3, number][] = [
-    [terminal.group, STAGE_POS.terminal, 110],
-    [neural.group, STAGE_POS.neural, 100],
-    [city.group, STAGE_POS.city, 130],
-    [crash.group, STAGE_POS.crash, 112],
-    [workshop.group, STAGE_POS.workshop, 60],
+  const place = (key: keyof typeof STAGE_POS, g: THREE.Group) => {
+    g.position.copy(STAGE_POS[key]);
+    scene.add(g);
+  };
+  const steps: [keyof typeof STAGE_POS, number, number][] = [
+    ["city", 0.02, 230],
+    ["crash", 0.16, 140],
+    ["neural", 0.3, 130],
+    ["atlas", 0.44, 120],
+    ["nova", 0.58, 120],
+    ["harbor", 0.72, 170],
+    ["terminal", 0.86, 110],
   ];
+  for (const [key, at, radius] of steps) {
+    progress(at, key);
+    await nextFrame();
+    if (key === "city") {
+      const s = buildCity({ quality, fonts });
+      place(key, s.group);
+      stages.push({ key, group: s.group, radius, update: (t, dt) => s.update(t, dt), pickables: s.pickables, setHover: s.setHover, dispose: s.dispose });
+    } else if (key === "crash") {
+      const s = buildCrash({ fonts });
+      place(key, s.group);
+      stages.push({ key, group: s.group, radius, update: (t, dt) => s.update(t, dt), pickables: s.pickables, setHover: s.setHover, dispose: s.dispose });
+    } else if (key === "neural") {
+      const s = buildNeural({ quality, fonts });
+      place(key, s.group);
+      stages.push({ key, group: s.group, radius, update: (t, dt, cam) => s.update(t, dt, cam), pickables: s.pickables, setHover: s.setHover, dispose: s.dispose });
+    } else if (key === "atlas") {
+      const s = buildAtlas({ quality, fonts });
+      place(key, s.group);
+      stages.push({ key, group: s.group, radius, update: (t, dt, cam, env) => s.update(t, dt, cam, env.viewScale), pickables: s.pickables, setHover: s.setHover, dispose: s.dispose });
+    } else if (key === "nova") {
+      const s = buildNova({ quality, fonts });
+      place(key, s.group);
+      stages.push({ key, group: s.group, radius, update: (t, dt, cam, env) => s.update(t, dt, cam, env.viewScale), pickables: s.pickables, setHover: s.setHover, dispose: s.dispose });
+    } else if (key === "harbor") {
+      const s = buildHarbor({ quality, fonts });
+      place(key, s.group);
+      stages.push({ key, group: s.group, radius, update: (t, dt, cam, _env, fog) => s.update(t, dt, cam, fog), pickables: s.pickables, setHover: s.setHover, dispose: s.dispose });
+    } else {
+      const s = buildTerminal();
+      place(key, s.group);
+      stages.push({ key, group: s.group, radius, update: (t, dt) => s.update(t, dt), pickables: [], setHover: () => {}, dispose: s.dispose });
+    }
+  }
+  progress(1, "world");
 
   return {
     scene,
-    pickables: workshop.pickables,
-    update(t, dt, _progress, cam) {
-      for (const [g, c, r] of groups) g.visible = cam.distanceTo(c) < r;
-      if (terminal.group.visible) terminal.update(t, dt);
-      if (neural.group.visible) neural.update(t, cam);
-      if (city.group.visible) city.update(t, dt);
-      if (crash.group.visible) crash.update(t);
-      if (workshop.group.visible) workshop.update(t, dt);
+    pickables: stages.flatMap((s) => s.pickables),
+    get bloom() {
+      return atmosphere.bloom;
     },
-    setHover: workshop.setHover,
+    update(t, dt, _progress, cam, env) {
+      atmosphere.update(cam, t);
+      for (const s of stages) {
+        const past = s.key === "harbor" && cam.z < STAGE_POS.harbor.z - 30; // the sea must not leak into the terminal
+        s.group.visible = !past && cam.distanceTo(STAGE_POS[s.key]) < s.radius;
+        if (s.group.visible) s.update(t, dt, cam, env, atmosphere.fog);
+      }
+    },
+    setHover(id) {
+      for (const s of stages) s.setHover(id);
+    },
     dispose() {
-      terminal.dispose();
-      neural.dispose();
-      city.dispose();
-      crash.dispose();
-      workshop.dispose();
+      stages.forEach((s) => s.dispose());
+      atmosphere.dispose();
       mGeo.dispose();
       mMat.dispose();
     },

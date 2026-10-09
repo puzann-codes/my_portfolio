@@ -330,7 +330,6 @@ export default function Playground() {
   return (
     <section
       id="playground"
-      data-ink-zone="dark"
       className="relative w-full bg-[#0a0a0a] text-white px-6 md:px-10 pt-20 md:pt-28 pb-24 md:pb-32"
     >
       <div className="max-w-[1400px] mx-auto">

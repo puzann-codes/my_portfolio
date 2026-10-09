@@ -17,7 +17,7 @@ export default function WorkGrid() {
     const ctx = gsap.context(() => {
       cards.forEach((card, i) => {
         // Animate the card's individual pieces directly instead of the
-        // `<a>` wrapper: a transform on an ANCESTOR of the ink-text title
+        // `<a>` wrapper: a transform on an ANCESTOR of the reveal-text title
         // would create a stacking context that isolates it from blending
         // against the ink canvas (it'd render flat white-on-white instead
         // of inverting), so nothing that wraps the title may be animated.
@@ -53,6 +53,7 @@ export default function WorkGrid() {
           key={p.slug}
           href={`/work/${p.slug}`}
           data-cursor-hover
+          data-cursor-label="OPEN PROJECT"
           className="work-card group block"
         >
           <div
@@ -65,7 +66,7 @@ export default function WorkGrid() {
           </div>
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h3 className="ink-text font-display font-bold text-xl md:text-2xl leading-tight mb-1">
+              <h3 className="reveal-text font-display font-bold text-xl md:text-2xl leading-tight mb-1">
                 {p.title}
               </h3>
               <p className="text-sm opacity-55">

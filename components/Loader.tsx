@@ -8,13 +8,14 @@ import { guitarSynth } from "@/lib/audio";
 // Boot log. Each line appears when the (real) load progress passes its mark.
 const LOG = [
   "mount /fonts",
-  "place desk, lamp, one very good chair (offscreen)",
+  "light the lamp",
   "tune 84 keycaps",
-  "tile 5 windows (i3)",
-  "wire 6 layers of neurons",
+  "hang five framed prints",
+  "brew the coffee",
+  "sketch three ideas",
   "zone the city grid",
   "reconstruct the crash",
-  "sweep the workshop floor",
+  "wire up the agents",
   "compile shaders",
   "all systems nominal",
 ];

@@ -5,6 +5,7 @@ import Lenis from "lenis";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { LenisContext } from "@/lib/lenis-context";
+import { prefersReducedMotion } from "@/lib/motion";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -12,7 +13,7 @@ export default function SmoothScroll({ children }: { children: React.ReactNode }
   const [lenis, setLenis] = useState<Lenis | null>(null);
 
   useEffect(() => {
-    const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const prefersReduced = prefersReducedMotion();
 
     const instance = new Lenis({
       duration: prefersReduced ? 0.1 : 1.15,

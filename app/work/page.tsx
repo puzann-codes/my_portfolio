@@ -13,13 +13,13 @@ export default function WorkPage() {
     <main className="relative min-h-screen px-6 md:px-10">
       <Nav />
       <div className="max-w-[1400px] mx-auto pt-32 md:pt-40 pb-10">
-        <p className="ink-text font-display text-xs tracking-[0.25em] uppercase opacity-60 mb-4">
+        <p className="reveal-text font-display text-xs tracking-[0.25em] uppercase opacity-60 mb-4">
           Archive
         </p>
-        <h1 className="ink-text font-display font-black text-[13vw] md:text-[6.5vw] leading-[0.9] tracking-tight mb-6">
+        <h1 className="reveal-text font-display font-black text-[13vw] md:text-[6.5vw] leading-[0.9] tracking-tight mb-6">
           All Projects
         </h1>
-        <p className="ink-text max-w-md text-sm md:text-base opacity-70 mb-16 md:mb-24">
+        <p className="reveal-text max-w-md text-sm md:text-base opacity-70 mb-16 md:mb-24">
           Every project, experiment and collaboration — from AI products to
           full-stack builds. Six of these live on the guitar back home.
         </p>

@@ -1,3 +1,32 @@
+/**
+ * Project content.
+ *
+ * `caseStudy` fields are optional on purpose: a section on the project page
+ * only renders when it has real content. Nothing here is invented. What is
+ * filled in below is exactly what has been stated about each project; add the
+ * rest (role, architecture, decisions, results, links, screenshots) as you
+ * write it, and the page picks it up.
+ */
+
+export type CaseStudy = {
+  /** what problem the project addresses */
+  problem?: string;
+  /** your verified contributions */
+  role?: string[];
+  /** how it is put together */
+  architecture?: { summary: string; parts?: string[] };
+  /** technologies actually used */
+  stack?: string[];
+  /** a decision, and why */
+  decisions?: { title: string; detail: string }[];
+  /** screenshots / demos / diagrams, as files under /public */
+  media?: { src: string; alt: string; caption?: string }[];
+  /** verified results or achievements */
+  results?: string[];
+  /** repository, live site, write-up… */
+  links?: { label: string; href: string }[];
+};
+
 export type Project = {
   slug: string;
   title: string;
@@ -9,8 +38,11 @@ export type Project = {
   color: string;
   /** one or two sentences for the project page */
   summary: string;
-  /** "shipped" objects are glossy in the workshop, "experiment" ones are wireframe */
-  status: "shipped" | "experiment";
+  /** which schematic the page shows; `null` for placeholders */
+  diagram: "routing" | "timeline" | "agents" | null;
+  caseStudy?: CaseStudy;
+  /** placeholder projects stay in the archive but are marked as such */
+  placeholder?: boolean;
 };
 
 // Order matters: index i is string i on the guitar, pad i in the
@@ -25,31 +57,42 @@ export const TOP_PROJECTS: Project[] = [
     note: "E2",
     color: "#1c1c1c",
     summary:
-      "Civic technology: software that makes public systems easier for people to reach. Full write-up coming soon.",
-    status: "shipped",
+      "A citizen–government complaint platform: people raise a complaint, and it is routed to the office that should deal with it.",
+    diagram: "routing",
+    caseStudy: {
+      problem:
+        "Citizens need a clear way to raise complaints with government, and complaints need to reach the right office.",
+    },
   },
   {
     slug: "crash-capsule",
     title: "Crash Capsule",
     category: "Accident Reconstruction",
     year: "2026",
-    tags: ["Reconstruction", "Simulation"],
+    tags: ["Reconstruction", "Concept"],
     note: "A2",
     color: "#242424",
     summary:
-      "Reconstructing accidents from the evidence: scene, trajectories and timeline, replayable. Full write-up coming soon.",
-    status: "shipped",
+      "A post-crash evidence-reconstruction concept: scattered evidence is ordered into a timeline that can be replayed.",
+    diagram: "timeline",
+    caseStudy: {
+      problem:
+        "After a crash, the evidence is scattered. Reconstructing what happened means putting it back in order.",
+    },
   },
   {
-    slug: "aria-copilot",
-    title: "Aria Copilot",
-    category: "AI Product · SaaS",
-    year: "2025",
-    tags: ["LLM", "Next.js", "Vector Search"],
+    slug: "agentic-ai-hackathon",
+    title: "Agentic AI Hackathon",
+    category: "Hackathon · Agentic AI",
+    year: "2026",
+    tags: ["Agentic AI", "Hackathon"],
     note: "D3",
     color: "#2c2c2c",
-    summary: "Placeholder project. Replace with a real case study.",
-    status: "shipped",
+    summary: "Hackathon work on an agentic AI architecture built from connected components.",
+    diagram: "agents",
+    caseStudy: {
+      problem: "Building a system where several AI components work together toward a goal.",
+    },
   },
   {
     slug: "signal-atlas",
@@ -60,7 +103,8 @@ export const TOP_PROJECTS: Project[] = [
     note: "G3",
     color: "#343434",
     summary: "Placeholder project. Replace with a real case study.",
-    status: "experiment",
+    diagram: null,
+    placeholder: true,
   },
   {
     slug: "nova-render",
@@ -71,7 +115,8 @@ export const TOP_PROJECTS: Project[] = [
     note: "B3",
     color: "#3c3c3c",
     summary: "Placeholder project. Replace with a real case study.",
-    status: "experiment",
+    diagram: null,
+    placeholder: true,
   },
   {
     slug: "harbor-cms",
@@ -82,7 +127,8 @@ export const TOP_PROJECTS: Project[] = [
     note: "E4",
     color: "#444444",
     summary: "Placeholder project. Replace with a real case study.",
-    status: "shipped",
+    diagram: null,
+    placeholder: true,
   },
 ];
 
@@ -102,7 +148,8 @@ const placeholder = (
   note: "—",
   color,
   summary: "Placeholder project. Replace with a real case study.",
-  status: "shipped",
+  diagram: null,
+  placeholder: true,
 });
 
 export const ALL_PROJECTS: Project[] = [

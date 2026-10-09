@@ -61,7 +61,7 @@ export default function Hero({ ready }: { ready: boolean }) {
         duration: 0.9,
         stagger: 0.08,
         // A lingering non-"none" transform (even translate(0,0)) creates a
-        // stacking context that isolates mix-blend-mode on these .ink-text
+        // stacking context that isolates mix-blend-mode on these .reveal-text
         // elements, so they'd render flat white forever instead of
         // inverting against the ink canvas. Clearing it once the entrance
         // finishes restores normal blending at rest.
@@ -81,7 +81,7 @@ export default function Hero({ ready }: { ready: boolean }) {
       <div className="flex items-start justify-between gap-6 flex-wrap">
         <p
           data-fade-up
-          className="ink-text max-w-[280px] md:max-w-sm text-base md:text-lg leading-snug font-medium text-black dark:text-white"
+          className="reveal-text max-w-[280px] md:max-w-sm text-base md:text-lg leading-snug font-medium text-black dark:text-white"
         >
           AI Engineer &amp; Full-Stack Developer.
           <br />
@@ -104,7 +104,7 @@ export default function Hero({ ready }: { ready: boolean }) {
       >
         {WORDS.map((word) => (
           <div key={word} className="relative">
-            <div className={`ink-text ${HEADING_CLASS}`}>
+            <div className={`reveal-text ${HEADING_CLASS}`}>
               {word.split("").map((ch, i) => (
                 <span key={i} className="hero-char">
                   {ch}
@@ -128,12 +128,12 @@ export default function Hero({ ready }: { ready: boolean }) {
       </div>
 
       <div className="flex items-end justify-between gap-6 flex-wrap mt-auto md:mt-0">
-        <p data-fade-up className="ink-text text-xs md:text-sm tracking-wide">
+        <p data-fade-up className="reveal-text text-xs md:text-sm tracking-wide">
           Available for select freelance &amp; full-time roles — 2026
         </p>
         <div
           data-fade-up
-          className="ink-text flex items-center gap-5 text-xs md:text-sm tracking-widest uppercase"
+          className="reveal-text flex items-center gap-5 text-xs md:text-sm tracking-widest uppercase"
         >
           <a href="https://linkedin.com" data-cursor-hover target="_blank" rel="noreferrer">
             LinkedIn

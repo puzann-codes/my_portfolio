@@ -15,7 +15,7 @@ import {
   maxFillRadius,
 } from "@/lib/guitar";
 import { mixColor, smoothstep, lerp } from "@/lib/color";
-import { guitarSynth, STRING_NOTES, AUDIO_UNLOCKED_EVENT } from "@/lib/audio";
+import { guitarSynth, STRING_NOTES, AUDIO_STATE_EVENT } from "@/lib/audio";
 import { type BlobShape, randomBlobShape, drawBlobPath } from "@/lib/blob";
 import { TOP_PROJECTS } from "@/data/projects";
 
@@ -74,13 +74,13 @@ export default function GuitarShowcase() {
   });
 
   useEffect(() => {
-    // guitarSynth's unlocked flag lives outside React (module-level
-    // singleton), so it can only be read client-side on mount.
+    // The synth's on/off flag lives outside React (module-level singleton),
+    // so it can only be read client-side on mount.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setAudioUnlocked(guitarSynth.isUnlocked);
-    const onUnlocked = () => setAudioUnlocked(true);
-    window.addEventListener(AUDIO_UNLOCKED_EVENT, onUnlocked);
-    return () => window.removeEventListener(AUDIO_UNLOCKED_EVENT, onUnlocked);
+    setAudioUnlocked(guitarSynth.isEnabled);
+    const onState = () => setAudioUnlocked(guitarSynth.isEnabled);
+    window.addEventListener(AUDIO_STATE_EVENT, onState);
+    return () => window.removeEventListener(AUDIO_STATE_EVENT, onState);
   }, []);
 
   // ------- scroll-triggered assembly -------
@@ -89,13 +89,13 @@ export default function GuitarShowcase() {
     if (!section) return;
 
     const ctx = gsap.context(() => {
-      // Animate the individual ink-text elements directly rather than
+      // Animate the individual reveal-text elements directly rather than
       // their wrapping div: any transform on an ANCESTOR of a
       // mix-blend-mode element creates a stacking context that isolates
       // it from blending against the ink canvas at all (it would render
       // as flat white-on-white instead of inverting). Animating the
       // blended elements themselves carries no such risk.
-      const headingTexts = headingRef.current?.querySelectorAll(".ink-text");
+      const headingTexts = headingRef.current?.querySelectorAll(".reveal-text");
       if (headingTexts?.length) {
         gsap.set(headingTexts, { opacity: 0, y: 40 });
       }
@@ -114,7 +114,7 @@ export default function GuitarShowcase() {
               ease: "power4.out",
               // Same fix as Hero.tsx: a lingering non-"none" transform
               // (even translate(0,0)) isolates mix-blend-mode on these
-              // .ink-text elements, permanently flattening them to white
+              // .reveal-text elements, permanently flattening them to white
               // instead of inverting against the ink. Clear it once the
               // reveal finishes.
               onComplete: () => gsap.set(headingTexts, { clearProps: "transform" }),
@@ -431,14 +431,14 @@ export default function GuitarShowcase() {
       >
         <div className="flex items-end justify-between flex-wrap gap-6">
           <div>
-            <p className="ink-text font-display text-xs tracking-[0.25em] uppercase mb-3">
+            <p className="reveal-text font-display text-xs tracking-[0.25em] uppercase mb-3">
               01 — Selected work
             </p>
-            <h2 className="ink-text font-display font-black text-[10vw] md:text-[5.2vw] leading-[0.9] tracking-tight">
+            <h2 className="reveal-text font-display font-black text-[10vw] md:text-[5.2vw] leading-[0.9] tracking-tight">
               My Top Works
             </h2>
           </div>
-          <p className="ink-text max-w-xs text-sm leading-relaxed">
+          <p className="reveal-text max-w-xs text-sm leading-relaxed">
             Six strings, six projects. Move over the body — the ink takes
             over on its own. Hover a string to hear its note.
           </p>
@@ -447,7 +447,6 @@ export default function GuitarShowcase() {
 
       <div
         ref={canvasWrapRef}
-        data-ink-zone={pageInked ? "dark" : undefined}
         className={`relative w-full transition-colors duration-[1200ms] ease-out ${
           pageInked ? "bg-[#0a0a0a]" : ""
         }`}
@@ -530,7 +529,6 @@ export default function GuitarShowcase() {
       </div>
 
       <div
-        data-ink-zone={pageInked ? "dark" : undefined}
         className={`w-full transition-colors duration-[1200ms] ease-out ${
           pageInked ? "bg-[#0a0a0a]" : "bg-transparent"
         }`}

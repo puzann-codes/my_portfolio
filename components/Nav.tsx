@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import SoundToggle from "@/components/SoundToggle";
 
 export default function Nav() {
   return (
@@ -25,6 +26,7 @@ export default function Nav() {
         <a href="mailto:rohitpoudel020@gmail.com" data-cursor-hover>
           CONTACT
         </a>
+        <SoundToggle />
       </nav>
     </header>
   );

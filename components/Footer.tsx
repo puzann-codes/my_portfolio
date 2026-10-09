@@ -13,7 +13,6 @@ export default function Footer() {
   return (
     <footer
       id="contact"
-      data-ink-zone="dark"
       className="relative w-full bg-[#0a0a0a] text-white px-6 md:px-10 pt-24 md:pt-36 pb-10"
     >
       <div className="max-w-[1400px] mx-auto">
@@ -80,7 +79,7 @@ export default function Footer() {
 
         <div className="mt-20 md:mt-28 flex flex-wrap items-center justify-between gap-4 text-xs text-white/50 tracking-wide">
           <p>© 2026 Pujan Bhatt</p>
-          <p>Built with ink, GSAP and an unreasonable amount of coffee.</p>
+          <p>Built with three.js, GSAP and an unreasonable amount of coffee.</p>
         </div>
       </div>
     </footer>

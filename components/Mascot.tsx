@@ -54,8 +54,7 @@ export default function Mascot({
   }, [size]);
 
   const poke = () => {
-    guitarSynth.unlock();
-    guitarSynth.splash();
+    guitarSynth.tick();
     if (rootRef.current) {
       gsap.fromTo(
         rootRef.current,

@@ -42,13 +42,19 @@ body {
   color: var(--foreground);
   font-family: var(--font-body);
   overflow-x: hidden;
-  cursor: none;
 }
 
-@media (hover: none), (pointer: coarse) {
-  body {
-    cursor: auto;
-  }
+/* The system cursor is hidden only while the custom one is running (fine
+ * pointer, JS up). Text fields keep the native caret/cursor. */
+html.has-prism-cursor,
+html.has-prism-cursor * {
+  cursor: none !important;
+}
+
+html.has-prism-cursor input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
+html.has-prism-cursor textarea,
+html.has-prism-cursor select {
+  cursor: text !important;
 }
 
 .font-display {
@@ -60,13 +66,8 @@ body {
 }
 
 /* ---------- hero name: char reveal + shimmer sweep ---------- */
-/* No `perspective` here on purpose: it (like `transform`/`filter`) always
- * creates a stacking context, which would isolate `.ink-text` inside from
- * blending against the ink canvas at all (text renders flat white-on-white
- * and vanishes). Per-char perspective is applied via GSAP's
- * transformPerspective instead, scoped to each .hero-char individually —
- * those are descendants of the blended element, not ancestors, so they
- * don't isolate it. */
+/* Per-char perspective is applied via GSAP's transformPerspective instead
+ * of a `perspective` on the heading, scoped to each .hero-char. */
 .hero-char {
   display: inline-block;
   transform-origin: 50% 100%;
@@ -104,59 +105,87 @@ body {
   color: #fff;
 }
 
-/* ---------- custom cursor ---------- */
-.cursor-dot {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 10px;
-  height: 10px;
-  margin: -5px 0 0 -5px;
-  border-radius: 50%;
-  /* White + mix-blend-mode:difference (same trick as .ink-text) is what
-   * keeps this visible against ANY backdrop: difference(white bg, white
-   * dot) = black dot on light backgrounds, difference(black content,
-   * white dot) = white dot on dark ones. The previous #0a0a0a fill was
-   * the wrong color for this blend — it read as near-invisible against
-   * both white and black. */
-  background: #fff;
-  pointer-events: none;
-  z-index: 9999;
-  will-change: transform;
-  transition: opacity 0.2s ease, background-color 0.3s ease;
-  mix-blend-mode: difference;
-}
-
-.cursor-dot.is-hover {
-  transform-origin: center;
-}
-
-@media (hover: none), (pointer: coarse) {
-  .cursor-dot {
-    display: none;
-  }
-}
-
-/* ---------- ink canvas ---------- */
-/* The ink is painted white on a transparent WebGL canvas that sits ABOVE the
- * whole page with mix-blend-mode: difference. Over a light backdrop that
- * reads as black ink; over a dark one (the 3D scene, dark sections) it
- * reads as white ink; and any text under it flips colour automatically. */
-.ink-canvas {
+/* ---------- prismatic signal cursor ---------- */
+.prism-cursor {
   position: fixed;
   inset: 0;
-  z-index: 9000;
-  width: 100vw;
-  height: 100vh;
+  z-index: 10000;
   pointer-events: none;
-  mix-blend-mode: difference;
+  transition: opacity 0.2s ease;
 }
 
-/* Any text wearing this inverts to white where the (black) ink canvas
- * sits behind it, and reads as normal dark text everywhere else. */
-.ink-text {
-  color: #fff;
-  mix-blend-mode: difference;
+.prism-ring,
+.prism-dot,
+.prism-label,
+.prism-ripple {
+  position: fixed;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  will-change: transform;
+}
+
+/* the aperture: a thin ring that cools and squares off as --m goes 0 → 1 */
+.prism-ring {
+  --m: 0;
+  --press: 0;
+  box-sizing: border-box;
+  width: 30px;
+  height: 30px;
+  border: 1px solid
+    color-mix(in srgb, rgba(236, 238, 242, 0.92), rgba(176, 208, 255, 0.95) calc(var(--m) * 100%));
+  /* a hairline of dark behind the light so it reads on white and on black */
+  box-shadow: 0 0 0 1px rgba(8, 9, 12, 0.28), inset 0 0 0 1px rgba(8, 9, 12, 0.12);
+  opacity: calc(0.9 - var(--press) * 0.25);
+}
+
+.prism-corner {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  opacity: var(--m);
+  border: 0 solid rgba(176, 208, 255, 0.98);
+}
+.prism-corner.tl { left: -4px; top: -4px; border-left-width: 1.5px; border-top-width: 1.5px; }
+.prism-corner.tr { right: -4px; top: -4px; border-right-width: 1.5px; border-top-width: 1.5px; }
+.prism-corner.bl { left: -4px; bottom: -4px; border-left-width: 1.5px; border-bottom-width: 1.5px; }
+.prism-corner.br { right: -4px; bottom: -4px; border-right-width: 1.5px; border-bottom-width: 1.5px; }
+
+/* the point: crisp, near-white, rounded in the physical world, a small
+ * square in the digital one */
+.prism-dot {
+  --m: 0;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: calc(3px * (1 - var(--m)) + 1px * var(--m));
+  background: color-mix(in srgb, #f6f6f2, #d6e6ff calc(var(--m) * 100%));
+  box-shadow: 0 0 0 1px rgba(8, 9, 12, 0.5);
+}
+
+.prism-label {
+  padding: 3px 7px;
+  border-radius: 3px;
+  background: rgba(10, 11, 14, 0.82);
+  color: #f2f3f5;
+  font: 600 9.5px/1.2 var(--font-inter), system-ui, sans-serif;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.prism-ripple span {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 46px;
+  height: 46px;
+  border: 1px solid rgba(214, 230, 255, 0.95);
+  box-shadow: 0 0 0 1px rgba(8, 9, 12, 0.25);
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.35);
 }
 
 /* ---------- shared utility ---------- */
