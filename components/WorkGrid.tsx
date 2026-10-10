@@ -53,7 +53,7 @@ export default function WorkGrid() {
           key={p.slug}
           href={`/work/${p.slug}`}
           data-cursor-hover
-          data-cursor-label="OPEN PROJECT"
+         
           className="work-card group block"
         >
           <div
@@ -70,7 +70,7 @@ export default function WorkGrid() {
                 {p.title}
               </h3>
               <p className="text-sm opacity-55">
-                {p.category} · {p.year}
+                {[p.category, p.year].filter(Boolean).join(" · ")}
               </p>
             </div>
             <span className="work-arrow font-display text-lg opacity-40 group-hover:opacity-100 group-hover:translate-x-1 group-hover:-translate-y-1 transition-all">

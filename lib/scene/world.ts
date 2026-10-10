@@ -3,10 +3,9 @@ import { rng, nextFrame } from "./util";
 import { Atmosphere, type PaletteName } from "./sky";
 import { buildCity } from "./city";
 import { buildCrash } from "./crash";
-import { buildNeural } from "./neural";
-import { buildAtlas } from "./atlas";
-import { buildNova } from "./nova";
-import { buildHarbor } from "./harbor";
+import { buildHarvo } from "./harvo";
+import { buildLearnscape } from "./learnscape";
+import { buildMul } from "./mul";
 import { buildTerminal } from "./terminal";
 
 /**
@@ -31,21 +30,19 @@ export type World = {
 // then the terminal. `experience.ts` frames the camera relative to these.
 export const STAGE_POS = {
   city: new THREE.Vector3(-10, 0, -120),
-  crash: new THREE.Vector3(20, 0, -280),
-  neural: new THREE.Vector3(30, 10, -440),
-  atlas: new THREE.Vector3(0, 6, -600),
-  nova: new THREE.Vector3(0, 5, -760),
-  harbor: new THREE.Vector3(0, 0, -920),
-  terminal: new THREE.Vector3(0, 6, -1060),
+  crash: new THREE.Vector3(20, 0, -320),
+  harvo: new THREE.Vector3(0, 0, -520),
+  learnscape: new THREE.Vector3(0, 8, -720),
+  mul: new THREE.Vector3(0, 0, -920),
+  terminal: new THREE.Vector3(0, 6, -1120),
 };
 
 const PALETTE_OF: Record<keyof typeof STAGE_POS, PaletteName> = {
   city: "city",
   crash: "crash",
-  neural: "neural",
-  atlas: "atlas",
-  nova: "nova",
-  harbor: "harbor",
+  harvo: "harvo",
+  learnscape: "learnscape",
+  mul: "mul",
   terminal: "terminal",
 };
 
@@ -70,7 +67,7 @@ export async function buildWorld(opts: {
   for (let i = 0; i < N; i++) {
     pos[i * 3] = (R() - 0.5) * 260;
     pos[i * 3 + 1] = -20 + R() * 120;
-    pos[i * 3 + 2] = 60 - R() * 1300;
+    pos[i * 3 + 2] = 60 - R() * 1500;
   }
   const mGeo = new THREE.BufferGeometry();
   mGeo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
@@ -99,42 +96,29 @@ export async function buildWorld(opts: {
     scene.add(g);
   };
   const steps: [keyof typeof STAGE_POS, number, number][] = [
-    ["city", 0.02, 230],
-    ["crash", 0.16, 140],
-    ["neural", 0.3, 130],
-    ["atlas", 0.44, 120],
-    ["nova", 0.58, 120],
-    ["harbor", 0.72, 170],
-    ["terminal", 0.86, 110],
+    ["city", 0.02, 220],
+    ["crash", 0.18, 100],
+    ["harvo", 0.38, 170],
+    ["learnscape", 0.56, 130],
+    ["mul", 0.74, 170],
+    ["terminal", 0.88, 110],
   ];
   for (const [key, at, radius] of steps) {
     progress(at, key);
     await nextFrame();
+    const cam = (s: { group: THREE.Group; update: (t: number, dt: number, c: THREE.Vector3) => void; pickables: THREE.Object3D[]; setHover: (id: string | null) => void; dispose: () => void }) => {
+      place(key, s.group);
+      stages.push({ key, group: s.group, radius, update: (t, dt, c) => s.update(t, dt, c), pickables: s.pickables, setHover: s.setHover, dispose: s.dispose });
+    };
     if (key === "city") {
       const s = buildCity({ quality, fonts });
       place(key, s.group);
       stages.push({ key, group: s.group, radius, update: (t, dt) => s.update(t, dt), pickables: s.pickables, setHover: s.setHover, dispose: s.dispose });
-    } else if (key === "crash") {
-      const s = buildCrash({ fonts });
-      place(key, s.group);
-      stages.push({ key, group: s.group, radius, update: (t, dt) => s.update(t, dt), pickables: s.pickables, setHover: s.setHover, dispose: s.dispose });
-    } else if (key === "neural") {
-      const s = buildNeural({ quality, fonts });
-      place(key, s.group);
-      stages.push({ key, group: s.group, radius, update: (t, dt, cam) => s.update(t, dt, cam), pickables: s.pickables, setHover: s.setHover, dispose: s.dispose });
-    } else if (key === "atlas") {
-      const s = buildAtlas({ quality, fonts });
-      place(key, s.group);
-      stages.push({ key, group: s.group, radius, update: (t, dt, cam, env) => s.update(t, dt, cam, env.viewScale), pickables: s.pickables, setHover: s.setHover, dispose: s.dispose });
-    } else if (key === "nova") {
-      const s = buildNova({ quality, fonts });
-      place(key, s.group);
-      stages.push({ key, group: s.group, radius, update: (t, dt, cam, env) => s.update(t, dt, cam, env.viewScale), pickables: s.pickables, setHover: s.setHover, dispose: s.dispose });
-    } else if (key === "harbor") {
-      const s = buildHarbor({ quality, fonts });
-      place(key, s.group);
-      stages.push({ key, group: s.group, radius, update: (t, dt, cam, _env, fog) => s.update(t, dt, cam, fog), pickables: s.pickables, setHover: s.setHover, dispose: s.dispose });
-    } else {
+    } else if (key === "crash") cam(buildCrash({ fonts }));
+    else if (key === "harvo") cam(buildHarvo({ quality, fonts }));
+    else if (key === "learnscape") cam(buildLearnscape({ quality, fonts }));
+    else if (key === "mul") cam(buildMul({ quality, fonts }));
+    else {
       const s = buildTerminal();
       place(key, s.group);
       stages.push({ key, group: s.group, radius, update: (t, dt) => s.update(t, dt), pickables: [], setHover: () => {}, dispose: s.dispose });
@@ -151,8 +135,7 @@ export async function buildWorld(opts: {
     update(t, dt, _progress, cam, env) {
       atmosphere.update(cam, t);
       for (const s of stages) {
-        const past = s.key === "harbor" && cam.z < STAGE_POS.harbor.z - 30; // the sea must not leak into the terminal
-        s.group.visible = !past && cam.distanceTo(STAGE_POS[s.key]) < s.radius;
+        s.group.visible = cam.distanceTo(STAGE_POS[s.key]) < s.radius;
         if (s.group.visible) s.update(t, dt, cam, env, atmosphere.fog);
       }
     },

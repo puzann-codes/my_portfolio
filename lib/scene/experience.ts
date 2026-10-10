@@ -71,7 +71,8 @@ const D_CROSS = 0.358; // desk → machine swap
 const P_CROSS = D_CROSS * K; // absolute
 const P_PUSH = D_PUSH * K;
 const P_BACK = 0.905; // machine → desk swap
-const STAGE_SPAN = 0.0885;
+const STAGES_N = 6;
+const STAGE_SPAN = 0.62 / STAGES_N;
 const stageStart = (i: number) => P_CROSS + i * STAGE_SPAN;
 
 /** Where the interesting moments sit on the scroll, for jump links. */
@@ -80,7 +81,7 @@ export const MARKS = {
   notebook: 0.196,
   enter: 0.255,
   projects: 0.28,
-  stack: stageStart(6) + 0.03,
+  stack: stageStart(STAGES_N - 1) + 0.03,
   contact: 0.955,
 };
 
@@ -90,14 +91,14 @@ const v3 = (a: [number, number, number]) => new THREE.Vector3(a[0], a[1], a[2]);
 
 // ---- desk path: wide → keyboard → cup → notebook (then the screen). Desk-domain p. ----
 const DESK_KEYS: Key[] = [
-  { p: 0.0, pos: [0.0, 0.7, 1.82], look: [0.0, 0.52, 0], fov: 42 },
-  { p: 0.055, pos: [0.0, 0.7, 1.82], look: [0.0, 0.52, 0], fov: 42 },
-  { p: 0.12, pos: [0.04, 0.36, 1.0], look: [0.06, 0.06, 0.14], fov: 40 },
-  { p: 0.165, pos: [0.1, 0.33, 0.92], look: [0.12, 0.05, 0.16], fov: 38 },
-  { p: 0.195, pos: [-0.3, 0.27, 0.66], look: [-0.58, 0.07, -0.2], fov: 34 },
-  { p: 0.222, pos: [-0.46, 0.23, 0.5], look: [-0.64, 0.06, -0.2], fov: 33 },
-  { p: 0.258, pos: [-0.8, 0.54, 0.52], look: [-0.82, 0.01, 0.2], fov: 36 },
-  { p: 0.31, pos: [-0.76, 0.5, 0.47], look: [-0.8, 0.01, 0.19], fov: 36 },
+  { p: 0.0, pos: [0.26, 0.55, 1.46], look: [0.02, 0.27, -0.3], fov: 38 },
+  { p: 0.055, pos: [0.26, 0.55, 1.46], look: [0.02, 0.27, -0.3], fov: 38 },
+  { p: 0.12, pos: [0.06, 0.34, 0.62], look: [0.02, 0.06, -0.06], fov: 40 },
+  { p: 0.165, pos: [0.1, 0.31, 0.56], look: [0.04, 0.05, -0.06], fov: 38 },
+  { p: 0.195, pos: [-0.06, 0.26, 0.34], look: [-0.3, 0.07, -0.34], fov: 34 },
+  { p: 0.222, pos: [-0.12, 0.22, 0.2], look: [-0.31, 0.06, -0.35], fov: 33 },
+  { p: 0.258, pos: [-0.38, 0.52, 0.28], look: [-0.4, 0.01, -0.02], fov: 36 },
+  { p: 0.31, pos: [-0.35, 0.47, 0.24], look: [-0.38, 0.01, -0.05], fov: 36 },
 ];
 
 type Framing = { pos: [number, number, number]; look: [number, number, number]; fov: number };
@@ -110,33 +111,27 @@ const STAGE_KEYS: [keyof typeof STAGE_POS, Framing, Framing, Framing][] = [
   ],
   [
     "crash",
-    { pos: [-40, 40, 70], look: [0, 0, -10], fov: 58 },
-    { pos: [-12, 24, 27], look: [0, 0, -1], fov: 55 },
-    { pos: [14, 17, 19], look: [0, 0, -1], fov: 55 },
+    { pos: [-52, 46, 78], look: [8, 8, -6], fov: 58 },
+    { pos: [-24, 30, 48], look: [8, 10, -6], fov: 56 },
+    { pos: [10, 22, 40], look: [8, 14, -6], fov: 58 },
   ],
   [
-    "neural",
-    { pos: [-20, -2, 82], look: [0, 0, 8], fov: 55 },
-    { pos: [-3, 0, 42], look: [0, 0, -5], fov: 58 },
-    { pos: [1, 0, 6], look: [-1, -1, -50], fov: 62 },
+    "harvo",
+    { pos: [-70, 50, 110], look: [0, 4, -20], fov: 58 },
+    { pos: [-30, 24, 70], look: [0, 4, -30], fov: 56 },
+    { pos: [14, 14, 40], look: [0, 10, -45], fov: 58 },
   ],
   [
-    "atlas",
-    { pos: [-30, 6, 90], look: [0, 0, 0], fov: 55 },
-    { pos: [-12, 5, 58], look: [0, 2, 0], fov: 50 },
-    { pos: [10, 4, 46], look: [0, 3, 0], fov: 48 },
+    "learnscape",
+    { pos: [-44, 12, 84], look: [0, 2, -8], fov: 55 },
+    { pos: [-14, 8, 52], look: [0, 0, -10], fov: 55 },
+    { pos: [12, 6, 40], look: [0, 6, -20], fov: 56 },
   ],
   [
-    "nova",
-    { pos: [-35, 5, 95], look: [0, 0, 0], fov: 55 },
-    { pos: [-10, 4, 44], look: [0, 0, 0], fov: 52 },
-    { pos: [14, 6, 36], look: [0, 0, 0], fov: 52 },
-  ],
-  [
-    "harbor",
-    { pos: [-50, 30, 120], look: [0, 4, -30], fov: 58 },
-    { pos: [-26, 14, 64], look: [0, 4, -30], fov: 56 },
-    { pos: [10, 9, 40], look: [0, 5, -34], fov: 56 },
+    "mul",
+    { pos: [-40, 40, 78], look: [-4, 12, -6], fov: 58 },
+    { pos: [-18, 28, 44], look: [-4, 14, -8], fov: 56 },
+    { pos: [6, 24, 30], look: [4, 18, -20], fov: 58 },
   ],
   [
     "terminal",
@@ -164,7 +159,7 @@ const STAGE_AT = [
   0.06 * K,
   0.18 * K,
   0.225 * K,
-  ...Array.from({ length: 7 }, (_, i) => stageStart(i) - 0.004),
+  ...Array.from({ length: STAGES_N }, (_, i) => stageStart(i) - 0.004),
   0.95,
 ];
 
@@ -288,7 +283,6 @@ export async function createExperience(opts: ExperienceOptions): Promise<Experie
   const ndc = new THREE.Vector2();
   let hoverNdc: THREE.Vector2 | null = null;
   let hoverId: string | null = null;
-  let hoverRectOn = false;
 
   const state: DeskState = {
     keyWave: -1,
@@ -561,52 +555,22 @@ export async function createExperience(opts: ExperienceOptions): Promise<Experie
     return hit ? dataOf(hit.object) : null;
   };
 
-  const projectRect = (obj: THREE.Object3D) => {
-    const box = new THREE.Box3().setFromObject(obj);
-    const r = canvas.getBoundingClientRect();
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    const v = new THREE.Vector3();
-    for (let i = 0; i < 8; i++) {
-      v.set(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z);
-      v.project(camera);
-      const px = r.left + ((v.x + 1) / 2) * r.width;
-      const py = r.top + ((1 - v.y) / 2) * r.height;
-      minX = Math.min(minX, px);
-      maxX = Math.max(maxX, px);
-      minY = Math.min(minY, py);
-      maxY = Math.max(maxY, py);
-    }
-    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY, r: 6 };
-  };
+  const airRay = new THREE.Raycaster();
+  const airPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0.25);
+  const airPt = new THREE.Vector3();
+  const airVel = new THREE.Vector3();
+  let airPrev: { pt: THREE.Vector3; t: number } | null = null;
 
   const setHoverTarget = (info: Hit | null) => {
     const id = info?.data.id ?? null;
-    if (id !== hoverId) {
-      hoverId = id;
-      desk.setHover(id);
-      world.setHover(id);
-      opts.onHover(info ? { id: info.data.id, title: info.data.title, label: info.data.label } : null);
-      if (!info) {
-        hoverRectOn = false;
-        setCursor({ hint: null, rect: null });
-      } else {
-        setCursor({ hint: info.data.label });
-      }
-    }
-    // the cursor frames the object; its bounds move with the camera
-    if (info) {
-      const rect = projectRect(info.obj);
-      if (rect.w > 4 && rect.h > 4 && rect.w < window.innerWidth * 0.9) {
-        hoverRectOn = true;
-        setCursor({ rect });
-      } else if (hoverRectOn) {
-        hoverRectOn = false;
-        setCursor({ rect: null });
-      }
-    }
+    if (id === hoverId) return;
+    hoverId = id;
+    canvas.style.cursor = info ? "pointer" : "";
+    desk.setHover(id);
+    world.setHover(id);
+    opts.onHover(info ? { id: info.data.id, title: info.data.title, label: info.data.label } : null);
+    if (!info) setCursor({ kind: null, hint: null });
+    else setCursor({ kind: info.data.slug ? "project" : "object", hint: info.data.label });
   };
 
   // ---------- loop ----------
@@ -732,7 +696,7 @@ export async function createExperience(opts: ExperienceOptions): Promise<Experie
       if (a) clock.getDelta();
       else {
         lastDigital = -1;
-        setCursor({ digital: 0, hint: null, rect: null });
+        setCursor({ digital: 0, kind: null, hint: null });
         hoverId = null;
       }
     },
@@ -748,6 +712,24 @@ export async function createExperience(opts: ExperienceOptions): Promise<Experie
     },
     hover(x, y) {
       hoverNdc = toNdc(x, y).clone();
+      // the pointer's air, in world space: where the ray crosses the plane the plants stand on,
+      // and how fast that crossing point moved (so it is right wherever the camera is)
+      if (phase !== "desk" || cur > P_PUSH) {
+        airPrev = null;
+        return;
+      }
+      airRay.setFromCamera(hoverNdc, camera);
+      if (!airRay.ray.intersectPlane(airPlane, airPt)) return;
+      const now = performance.now();
+      if (airPrev) {
+        const dt = (now - airPrev.t) / 1000;
+        if (dt > 0.002 && dt < 0.25) {
+          airVel.copy(airPt).sub(airPrev.pt).divideScalar(dt);
+          if (airVel.length() > 2.4) airVel.setLength(2.4);
+          desk.blow(airRay.ray.origin, airRay.ray.direction, airVel);
+        }
+      }
+      airPrev = { pt: airPt.clone(), t: now };
     },
     leave() {
       hoverNdc = null;
@@ -769,7 +751,7 @@ export async function createExperience(opts: ExperienceOptions): Promise<Experie
     },
     dispose() {
       cancelAnimationFrame(raf);
-      setCursor({ digital: 0, hint: null, rect: null });
+      setCursor({ digital: 0, kind: null, hint: null });
       desk.dispose();
       world.dispose();
       composer?.dispose();

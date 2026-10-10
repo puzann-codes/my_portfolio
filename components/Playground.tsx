@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { TOP_PROJECTS } from "@/data/projects";
+import { STRING_PROJECTS } from "@/data/projects";
 import { guitarSynth, STRING_NOTES } from "@/lib/audio";
 
 // Pad centres as fractions of the arena. Six pads, one per guitar string.
@@ -276,7 +276,7 @@ export default function Playground() {
         mctx.fillText(STRING_NOTES[i].note, px, py + 4);
         mctx.fillStyle = `rgba(255,255,255,${0.4 + g * 0.5})`;
         mctx.font = "500 10px ui-monospace, Menlo, monospace";
-        mctx.fillText(TOP_PROJECTS[i].title.toUpperCase(), px, py + padR + 18);
+        mctx.fillText(STRING_PROJECTS[i].title.toUpperCase(), px, py + padR + 18);
       });
 
       // the pick
@@ -325,7 +325,7 @@ export default function Playground() {
     };
   }, []);
 
-  const project = active >= 0 ? TOP_PROJECTS[active] : null;
+  const project = active >= 0 ? STRING_PROJECTS[active] : null;
 
   return (
     <section
@@ -401,7 +401,7 @@ export default function Playground() {
                   {project.title}
                 </h3>
                 <p className="text-[11px] tracking-widest uppercase text-white/50">
-                  {project.category} · {project.year}
+                  {[project.category, project.year].filter(Boolean).join(" · ")}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {project.tags.map((t) => (

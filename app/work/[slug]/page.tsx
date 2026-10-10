@@ -81,10 +81,12 @@ export default async function ProjectPage({
                 <dt className="text-xs tracking-widest uppercase opacity-50 mb-1">Category</dt>
                 <dd>{project.category}</dd>
               </div>
-              <div>
-                <dt className="text-xs tracking-widest uppercase opacity-50 mb-1">Year</dt>
-                <dd>{project.year}</dd>
-              </div>
+              {project.year && (
+                <div>
+                  <dt className="text-xs tracking-widest uppercase opacity-50 mb-1">Year</dt>
+                  <dd>{project.year}</dd>
+                </div>
+              )}
               <div>
                 <dt className="text-xs tracking-widest uppercase opacity-50 mb-2">Tags</dt>
                 <dd className="flex flex-wrap gap-2">
@@ -100,9 +102,9 @@ export default async function ProjectPage({
           </div>
         </header>
 
-        {project.diagram && (
+        {project.flow && (
           <div className="mb-12 md:mb-16 rounded-3xl border border-black/10 bg-[#f4f2ea] p-6 md:p-10">
-            <ProjectDiagram kind={project.diagram} />
+            <ProjectDiagram flow={project.flow} title={project.title} />
           </div>
         )}
 
@@ -184,6 +186,16 @@ export default async function ProjectPage({
           </Section>
         )}
 
+        {cs.limits && cs.limits.length > 0 && (
+          <Section id="limits" title="Limits">
+            <ul className="list-disc pl-5 space-y-2">
+              {cs.limits.map((r) => (
+                <li key={r}>{r}</li>
+              ))}
+            </ul>
+          </Section>
+        )}
+
         {cs.links && cs.links.length > 0 && (
           <Section id="links" title="Links">
             <ul className="space-y-2">
@@ -202,12 +214,10 @@ export default async function ProjectPage({
           <div className="border-t border-black/15 py-10 md:py-14">
             <div className="max-w-2xl rounded-2xl border border-dashed border-black/25 p-6 md:p-8">
               <p className="font-display text-xs tracking-[0.25em] uppercase opacity-60 mb-3">
-                {project.placeholder ? "Placeholder" : "In progress"}
+                In progress
               </p>
               <p className="text-sm md:text-base leading-relaxed opacity-75">
-                {project.placeholder
-                  ? "This is a placeholder entry in the archive."
-                  : "The full write-up (role, architecture, engineering decisions and results) is still being written. What is on this page is what I can already stand behind."}
+                The full write-up (role, architecture, engineering decisions and results) is still being written. What is on this page is what I can already stand behind.
               </p>
             </div>
           </div>

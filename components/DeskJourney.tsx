@@ -31,7 +31,16 @@ type StageInfo = {
 
 // index = the director's stage (see STAGE_AT in lib/scene/experience.ts)
 const project = (slug: string) => TOP_PROJECTS.find((p) => p.slug === slug)!;
-const placeholderLine = (slug: string) => project(slug).tags.join(" · ");
+const projectStage = (slug: string): StageInfo => {
+  const p = project(slug);
+  return {
+    act: 3,
+    kicker: `Act 04 — ${p.category.split(" · ")[0]}`,
+    title: p.title,
+    line: p.summary,
+    cta: { href: `/work/${p.slug}`, label: "Open case study" },
+  };
+};
 
 const STAGES: (StageInfo | null)[] = [
   null,
@@ -51,50 +60,13 @@ const STAGES: (StageInfo | null)[] = [
     act: 2,
     kicker: "Act 03 — The idea",
     title: "An idea is only the beginning",
-    line: "Three sketches: a complaint finding its office, evidence becoming a timeline, an agent loop.",
+    line: "A complaint finding its office, evidence becoming a timeline, a loop that investigates.",
   },
-  {
-    act: 3,
-    kicker: "Act 04 — Sunūwā",
-    title: "A citizen–government complaint platform",
-    line: "Complaints that get routed to the right place.",
-    cta: { href: "/work/sunuwa", label: "Open case study" },
-  },
-  {
-    act: 3,
-    kicker: "Act 04 — Crash Capsule",
-    title: "Post-crash evidence reconstruction",
-    line: "A concept for turning scattered evidence into a replayable timeline.",
-    cta: { href: "/work/crash-capsule", label: "Open case study" },
-  },
-  {
-    act: 3,
-    kicker: "Act 04 — Agentic AI",
-    title: "Hackathon work on agentic systems",
-    line: "An architecture built from connected components.",
-    cta: { href: "/work/agentic-ai-hackathon", label: "Open case study" },
-  },
-  {
-    act: 3,
-    kicker: "Act 04 — Signal Atlas",
-    title: project("signal-atlas").category,
-    line: placeholderLine("signal-atlas"),
-    cta: { href: "/work/signal-atlas", label: "Open case study" },
-  },
-  {
-    act: 3,
-    kicker: "Act 04 — Nova Render",
-    title: project("nova-render").category,
-    line: placeholderLine("nova-render"),
-    cta: { href: "/work/nova-render", label: "Open case study" },
-  },
-  {
-    act: 3,
-    kicker: "Act 04 — Harbor CMS",
-    title: project("harbor-cms").category,
-    line: placeholderLine("harbor-cms"),
-    cta: { href: "/work/harbor-cms", label: "Open case study" },
-  },
+  projectStage("sunuwa"),
+  projectStage("crash-capsule"),
+  projectStage("harvo"),
+  projectStage("learnscape-ai"),
+  projectStage("mul"),
   {
     act: 4,
     kicker: "Act 05 — The stack",
@@ -368,6 +340,12 @@ export default function DeskJourney({ go, onLoad, onUnsupported }: Props) {
           style={{ opacity: 0 }}
         />
 
+        {/* a soft shade so the captions stay readable over the white desk and paper */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute left-0 bottom-0 h-[46vh] w-[min(54rem,100vw)] bg-gradient-to-tr from-black/65 via-black/30 to-transparent"
+        />
+
         {/* Act 01: a quiet introduction that leaves the desk uncovered */}
         <div
           className={`pointer-events-none absolute left-6 md:left-10 bottom-8 md:bottom-12 max-w-[min(26rem,80vw)] transition-all duration-700 ${
@@ -406,7 +384,7 @@ export default function DeskJourney({ go, onLoad, onUnsupported }: Props) {
                 {s.cta && (
                   <Link
                     href={s.cta.href}
-                    data-cursor-label="OPEN PROJECT"
+                   
                     className="pill-btn pill-btn-dark mt-5 pointer-events-auto text-xs"
                     tabIndex={stage === i ? 0 : -1}
                   >

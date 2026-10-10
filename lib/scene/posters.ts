@@ -1,12 +1,13 @@
 import * as THREE from "three";
 import { MONO, canvasTexture, makeCanvas } from "./util";
-import { printHandwritten, printMusic, printRails, type SceneFonts } from "./textures";
+import type { SceneFonts } from "./textures";
 
 /**
  * The wall. Real film posters and album covers (see public/posters/CREDITS.md)
- * plus a couple of original pieces. Every slot has a typographic stand-in that
- * shows instantly and is swapped for the image once it has loaded, so the wall
- * is never empty and a missing file degrades to a title card.
+ * hung as one composition: a dominant piece, a loose triptych, two quiet ones
+ * up high, and a ledge with two album covers leaning on it. Every slot has a
+ * typographic stand-in that shows instantly and is swapped for the image once
+ * it has loaded, so the wall is never empty.
  */
 
 export type PosterFinish = "black" | "metal" | "oak" | "white";
@@ -21,6 +22,13 @@ export type PosterDef = {
   h: number;
   finish: PosterFinish;
   mat?: { inset: number; color: number };
+  /** where it hangs on the wall (or stands, if `shelf`) */
+  x: number;
+  y: number;
+  /** a few degrees off level, the way a hand hangs things */
+  tilt?: number;
+  /** stands on the ledge instead of hanging */
+  shelf?: boolean;
   fallback: () => THREE.CanvasTexture;
 };
 
@@ -53,111 +61,61 @@ function titleCard(title: string, sub: string, bg: string, fg: string, ratio: nu
   return canvasTexture(c, 4);
 }
 
+const FILM_EXT: Record<string, string> = {
+  "dead-poets-society": "png",
+  "good-will-hunting": "png",
+};
+
 export function posterDefs(fonts: SceneFonts): PosterDef[] {
+  void fonts;
   const film = (
     id: string,
     title: string,
     year: string,
     bg: string,
     fg: string,
-    finish: PosterFinish
+    o: { w: number; h: number; x: number; y: number; finish: PosterFinish; tilt?: number; mat?: PosterDef["mat"] }
   ): PosterDef => ({
     id: `poster-${id}`,
     title,
     note: `${title} (${year}). One of the films I keep coming back to.`,
-    src: `/posters/${id}.${id === "dead-poets-society" || id === "good-will-hunting" ? "png" : "jpg"}`,
-    w: 0.26,
-    h: 0.38,
-    finish,
-    fallback: () => titleCard(title, year, bg, fg, 0.26 / 0.38),
+    src: `/posters/${id}.${FILM_EXT[id] ?? "jpg"}`,
+    fallback: () => titleCard(title, year, bg, fg, o.w / o.h),
+    ...o,
   });
-  const album = (id: string, title: string, note: string, ext: string, bg: string): PosterDef => ({
+  const album = (
+    id: string,
+    title: string,
+    note: string,
+    ext: string,
+    bg: string,
+    o: { x: number; y: number; tilt?: number }
+  ): PosterDef => ({
     id: `poster-${id}`,
     title,
     note,
     src: `/posters/${id}.${ext}`,
-    w: 0.3,
-    h: 0.3,
+    w: 0.13,
+    h: 0.13,
     finish: "black",
+    shelf: true,
     fallback: () => titleCard(title, "album", bg, "#f2f0e8", 1),
+    ...o,
   });
 
   return [
-    film("dead-poets-society", "Dead Poets Society", "1989", "#3a2f22", "#f1e6cf", "black"),
-    film("good-will-hunting", "Good Will Hunting", "1997", "#233447", "#e9f0f7", "oak"),
-    film("perks-of-being-a-wallflower", "The Perks of Being a Wallflower", "2012", "#43362b", "#f4ecdd", "black"),
-    film("stand-by-me", "Stand by Me", "1986", "#2f3d33", "#eef0e0", "metal"),
-    film("forrest-gump", "Forrest Gump", "1994", "#2c4a63", "#f6f1e0", "black"),
-    film("the-holdovers", "The Holdovers", "2023", "#4b2a2a", "#f3e7da", "white"),
-    film("whiplash", "Whiplash", "2014", "#5a1f1f", "#f6e7c8", "black"),
-    album(
-      "punisher",
-      "Phoebe Bridgers",
-      "Phoebe Bridgers (Punisher): the quiet, atmospheric end of rock.",
-      "png",
-      "#1d2a3d"
-    ),
-    album(
-      "grace",
-      "Jeff Buckley",
-      "Jeff Buckley (Grace): the soft, atmospheric end of rock and singer-songwriter music.",
-      "jpg",
-      "#2a2a2a"
-    ),
-    {
-      id: "poster-music",
-      title: "After dark",
-      note: "An original piece. Quiet, loud, quiet.",
-      w: 0.5,
-      h: 0.36,
-      finish: "metal",
-      fallback: () => printMusic(),
-    },
-    {
-      id: "poster-hand",
-      title: "A line of my own",
-      note: "An original line, handwritten. No borrowed lyrics.",
-      w: 0.21,
-      h: 0.27,
-      finish: "oak",
-      mat: { inset: 0.02, color: 0xf1ede2 },
-      fallback: () => printHandwritten(fonts),
-    },
-    {
-      id: "poster-rails",
-      title: "The long walk",
-      note: "Stand by Me, drawn as plainly as I could.",
-      w: 0.22,
-      h: 0.22,
-      finish: "black",
-      mat: { inset: 0.022, color: 0xe3e0d6 },
-      fallback: () => printRails(),
-    },
+    // the dominant piece, over the laptop
+    film("dead-poets-society", "Dead Poets Society", "1989", "#3a2f22", "#f1e6cf", { w: 0.3, h: 0.43, x: -0.36, y: 0.72, finish: "black" }),
+    // a loose triptych to its right, none of them level with the others
+    film("good-will-hunting", "Good Will Hunting", "1997", "#233447", "#e9f0f7", { w: 0.21, h: 0.3, x: 0.0, y: 0.84, finish: "oak", tilt: 0.012, mat: { inset: 0.012, color: 0xf1ede2 } }),
+    film("whiplash", "Whiplash", "2014", "#5a1f1f", "#f6e7c8", { w: 0.2, h: 0.29, x: 0.27, y: 0.7, finish: "black", tilt: -0.01 }),
+    film("the-holdovers", "The Holdovers", "2023", "#4b2a2a", "#f3e7da", { w: 0.15, h: 0.22, x: 0.5, y: 0.86, finish: "white" }),
+    // quieter ones, up and out
+    film("perks-of-being-a-wallflower", "The Perks of Being a Wallflower", "2012", "#43362b", "#f4ecdd", { w: 0.15, h: 0.22, x: -0.62, y: 0.9, finish: "metal", tilt: 0.02 }),
+    film("forrest-gump", "Forrest Gump", "1994", "#2c4a63", "#f6f1e0", { w: 0.13, h: 0.19, x: 0.62, y: 0.6, finish: "black", tilt: -0.018 }),
+    film("stand-by-me", "Stand by Me", "1986", "#2f3d33", "#eef0e0", { w: 0.12, h: 0.18, x: 0.36, y: 0.98, finish: "oak" }),
+    // two albums on the ledge, leaning
+    album("punisher", "Phoebe Bridgers", "Phoebe Bridgers (Punisher): the quiet, atmospheric end of rock.", "png", "#1d2a3d", { x: -0.22, y: 0, tilt: 0.03 }),
+    album("grace", "Jeff Buckley", "Jeff Buckley (Grace): the soft, atmospheric end of rock and singer-songwriter music.", "jpg", "#2a2a2a", { x: -0.04, y: 0, tilt: -0.025 }),
   ];
-}
-
-/**
- * Salon-style placement: a row of seven posters, a looser row above with the
- * album covers and the originals, small deliberate offsets so it reads as
- * hung by a person, not by a grid.
- */
-export function posterLayout(defs: PosterDef[]): Record<string, [number, number]> {
-  const out: Record<string, [number, number]> = {};
-  const films = defs.filter((d) => d.src && d.h > d.w);
-  const rowY = 0.56;
-  const jitter = [0.02, -0.012, 0.016, -0.022, 0.01, -0.016, 0.022];
-  films.forEach((d, i) => {
-    out[d.id] = [-0.92 + i * 0.3, rowY + jitter[i % jitter.length]];
-  });
-  const upper = ["poster-punisher", "poster-grace", "poster-music", "poster-hand", "poster-rails"];
-  const upDefs = upper.map((id) => defs.find((d) => d.id === id)!).filter(Boolean);
-  const gap = 0.055;
-  const total = upDefs.reduce((s, d) => s + d.w, 0) + gap * (upDefs.length - 1);
-  let x = -0.02 - total / 2;
-  const ys = [1.05, 1.08, 1.04, 1.1, 1.05];
-  upDefs.forEach((d, i) => {
-    out[d.id] = [x + d.w / 2, ys[i]];
-    x += d.w + gap;
-  });
-  return out;
 }

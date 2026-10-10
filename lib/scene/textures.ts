@@ -535,7 +535,7 @@ export function paintNotebookPage(
     label("government", 425, y1 + 66, p.s1);
   }
 
-  // 2 — Crash Capsule: evidence → a timeline
+  // 2 — Crash Capsule: record → seal → verify
   const y2 = 468;
   if (p.s2 > 0) {
     label("Crash Capsule", 84, y2 - 74, p.s2, "left");
@@ -548,15 +548,15 @@ export function paintNotebookPage(
         pencil(ctx, circle(x, y2 - 34, 7, 14), 1, 130 + i, 2);
       }
     });
-    label("evidence", 150, y2 + 62, p.s2);
-    label("scene", 330, y2 + 62, p.s2);
-    label("timeline", 480, y2 + 62, p.s2);
+    label("record", 150, y2 + 62, p.s2);
+    label("seal", 330, y2 + 62, p.s2);
+    label("verify", 480, y2 + 62, p.s2);
   }
 
-  // 3 — the agent work: plan → act → check, and round again
+  // 3 — Mul: hypothesise → gather evidence → review, and round again
   const y3 = 742;
   if (p.s3 > 0) {
-    label("agentic loop", 84, y3 - 104, p.s3, "left");
+    label("Mul", 84, y3 - 104, p.s3, "left");
     const nodes: [number, number][] = [[145, y3], [300, y3 - 52], [455, y3]];
     nodes.forEach(([x, y], i) => {
       pencil(ctx, circle(x, y, 26), Math.min(Math.max(p.s3 * 3 - i * 0.7, 0), 1), 141 + i);
@@ -569,9 +569,9 @@ export function paintNotebookPage(
       Math.min(Math.max(p.s3 * 3 - 2.1, 0), 1),
       153
     );
-    label("plan", 145, y3 + 54, p.s3);
-    label("act", 300, y3 - 92, p.s3);
-    label("check", 455, y3 + 54, p.s3);
+    label("hypothesise", 145, y3 + 54, p.s3);
+    label("evidence", 300, y3 - 92, p.s3);
+    label("review", 455, y3 + 54, p.s3);
   }
 }
 

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Archivo, Caveat, Inter, Unbounded } from "next/font/google";
 import "./globals.css";
 import SmoothScroll from "@/components/SmoothScroll";
-import PrismCursor from "@/components/PrismCursor";
+import AirCursor from "@/components/AirCursor";
 
 const archivo = Archivo({
   variable: "--font-archivo",
@@ -50,7 +50,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-[var(--background)] text-[var(--foreground)]">
         <div className="grain" aria-hidden="true" />
-        <PrismCursor />
+        <AirCursor />
         <SmoothScroll>{children}</SmoothScroll>
       </body>
     </html>

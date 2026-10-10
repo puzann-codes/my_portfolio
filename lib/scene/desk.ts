@@ -6,20 +6,19 @@ import {
   contactShadowTexture,
   feltTexture,
   plasterTexture,
-  walnutTexture,
   type SceneFonts,
   type SketchProgress,
 } from "./textures";
-import { posterDefs, posterLayout } from "./posters";
+import { posterDefs } from "./posters";
+import { buildMonstera, buildPothos, buildSnakePlant } from "./plants";
 import {
-  buildBooks,
+  buildMouse,
+  buildLaptopStand,
   buildClock,
   buildCup,
   buildFrame,
-  buildHeadphones,
   buildNotebook,
   buildPencil,
-  buildStickies,
   type Kit,
 } from "./props";
 
@@ -92,6 +91,8 @@ export type Desk = {
   setHover(id: string | null): void;
   /** load the real poster images (resolves when done; stand-ins show meanwhile) */
   loadPosters(): Promise<void>;
+  /** the pointer's air: a ray through the scene and a world velocity (m/s) */
+  blow(origin: THREE.Vector3, dir: THREE.Vector3, velocity: THREE.Vector3): void;
   startTyping(): void;
   /** the visitor pressing a real key */
   pressKey(code: string, down: boolean): void;
@@ -344,26 +345,33 @@ export function buildDesk(opts: { quality: "high" | "low"; fonts: SceneFonts }):
   floor.position.set(0, -0.78, 1.2);
   group.add(floor);
 
-  const woodTex = track(walnutTexture());
-  woodTex.repeat.set(1.4, 1);
+  // a compact, matte-white workstation: 130 × 66 cm, 3 cm top, slim graphite legs
+  const DESK = { w: 1.3, d: 0.66, t: 0.03, z: -0.22 };
+  const deskTex = track(plasterTexture());
   const desk = mesh(
-    new RoundedBoxGeometry(2.9, 0.05, 1.16, 4, 0.01),
-    std({ color: 0xffffff, map: woodTex, roughness: 0.52, metalness: 0.02 })
+    new RoundedBoxGeometry(DESK.w, DESK.t, DESK.d, 5, 0.006),
+    std({ color: 0xd6d4ce, roughness: 0.78, metalness: 0, bumpMap: deskTex, bumpScale: 0.03 })
   );
-  desk.position.set(0.05, -0.025, 0.02);
+  desk.position.set(0, -DESK.t / 2, DESK.z);
   group.add(desk);
-  // a pair of legs, so the desk isn't a floating slab when the camera drops
-  for (const x of [-1.3, 1.4]) {
-    const leg = mesh(new THREE.BoxGeometry(0.06, 0.75, 1.0), std({ color: 0x0f0f11, roughness: 0.5, metalness: 0.4 }));
-    leg.position.set(x, -0.425, 0.02);
-    group.add(leg);
+  const legMat = std({ color: 0x2b2c30, roughness: 0.45, metalness: 0.7 });
+  for (const x of [-0.6, 0.6]) {
+    for (const z of [DESK.z - 0.26, DESK.z + 0.26]) {
+      const leg = mesh(new RoundedBoxGeometry(0.03, 0.75, 0.03, 2, 0.004), legMat);
+      leg.position.set(x, -0.405, z);
+      group.add(leg);
+    }
   }
+  const rail = mesh(new THREE.BoxGeometry(1.14, 0.03, 0.02), legMat);
+  rail.position.set(0, -0.06, DESK.z - 0.26);
+  group.add(rail);
 
-  const MAT = { x: 0.2, z: 0.15, w: 1.5, d: 0.46 };
+  // a graphite desk pad anchors the keyboard, mouse and stand; the rest of the desk stays white
+  const MAT = { x: 0.04, z: -0.1, w: 0.86, d: 0.44 };
   const feltT = track(feltTexture(MAT.w / MAT.d));
   const mat = mesh(
     new RoundedBoxGeometry(MAT.w, 0.004, MAT.d, 2, 0.0018),
-    std({ color: 0xffffff, map: feltT, roughness: 1 }),
+    std({ color: 0x8a8d93, map: feltT, roughness: 1 }),
     false,
     true
   );
@@ -371,9 +379,13 @@ export function buildDesk(opts: { quality: "high" | "low"; fonts: SceneFonts }):
   group.add(mat);
 
   // ---------- laptop ----------
+  const stand = buildLaptopStand(kit);
+  stand.group.position.set(0, 0.004, -0.32);
+  group.add(stand.group);
   const laptop = new THREE.Group();
-  laptop.position.set(-0.3, 0.004, -0.06);
-  laptop.rotation.y = 0.12;
+  // front edge on the low end of the stand, base lying along the slope
+  laptop.position.set(0, 0.004 + stand.front + 0.0017 + (0.221 / 2) * Math.sin(stand.tilt), -0.32);
+  laptop.rotation.x = -stand.tilt;
   group.add(laptop);
 
   const LW = 0.314;
@@ -409,7 +421,6 @@ export function buildDesk(opts: { quality: "high" | "low"; fonts: SceneFonts }):
   const trackpad = mesh(new RoundedBoxGeometry(0.118, 0.0008, 0.074, 2, 0.0004), mAlu, false, true);
   trackpad.position.set(0, LH + 0.0002, 0.073);
   laptop.add(trackpad);
-  kit.addContact(laptop, 0.36, 0.28, { alpha: 0.75, y: -0.0024 });
 
   const lidPivot = new THREE.Group();
   lidPivot.position.set(0, LH, -LD / 2 + 0.004);
@@ -476,16 +487,22 @@ export function buildDesk(opts: { quality: "high" | "low"; fonts: SceneFonts }):
   const KBD = 0.138;
   const KBH = 0.026;
   const tilt = 0.1;
-  const KB = { x: 0.24, z: 0.26 };
+  const KB = { x: 0.0, z: -0.04 };
   kb.position.set(KB.x, 0.004 + Math.sin(tilt) * (KBD / 2) + 0.001, KB.z);
   kb.rotation.set(tilt, -0.03, 0);
   group.add(kb);
 
-  const kbCaseMat = std({ color: 0xe9e9e5, roughness: 0.42, metalness: 0.05 });
+  const kbCaseMat = std({ color: 0xdde6ee, roughness: 0.45, metalness: 0.05 });
   const kbCase = mesh(new RoundedBoxGeometry(KBW, KBH, KBD, 4, 0.009), kbCaseMat);
   kbCase.position.y = KBH / 2;
   kb.add(kbCase);
-  const plate = mesh(new THREE.PlaneGeometry(KBW - 0.014, KBD - 0.014), mBlack, false, true);
+  // the plate sits under the keys; a restrained icy-blue backlight shows in the gaps
+  const plate = mesh(
+    new THREE.PlaneGeometry(KBW - 0.014, KBD - 0.014),
+    std({ color: 0x0b1118, roughness: 0.6, emissive: 0x3a78ad, emissiveIntensity: 0.42 }),
+    false,
+    true
+  );
   plate.rotation.x = -Math.PI / 2;
   plate.position.y = KBH + 0.0003;
   kb.add(plate);
@@ -501,12 +518,13 @@ export function buildDesk(opts: { quality: "high" | "low"; fonts: SceneFonts }):
   const press = new Float32Array(layout.length);
   const target = new Float32Array(layout.length);
   const baseColor: THREE.Color[] = [];
-  const cA = new THREE.Color(0xf3f3f0);
-  const cB = new THREE.Color(0xc3c3be);
-  const cC = new THREE.Color(0xa9a9a4);
+  // AULA S75 Pro, Glacier Blue: white alphas, pale-blue modifiers, one deeper accent
+  const cA = new THREE.Color(0xf4f5f3);
+  const cB = new THREE.Color(0xa9c6e2);
+  const cC = new THREE.Color(0x6f9bcb);
   layout.forEach((k, i) => {
     keyIndex.set(k.code, i);
-    const col = k.code === "Escape" ? cC : k.mod ? cB : cA;
+    const col = k.code === "Escape" || k.code === "Enter" ? cC : k.mod ? cB : cA;
     baseColor.push(col.clone());
     keyMesh.setColorAt(i, col);
   });
@@ -569,100 +587,92 @@ export function buildDesk(opts: { quality: "high" | "low"; fonts: SceneFonts }):
   kb.add(kbHit);
 
   // ---------- mouse ----------
-  const mouse = new THREE.Group();
-  const MOUSE0 = new THREE.Vector3(0.62, 0.004, 0.24);
+  const mouse = buildMouse(kit);
+  const MOUSE0 = new THREE.Vector3(0.27, 0.004, 0.0);
   mouse.position.copy(MOUSE0);
-  mouse.rotation.y = -0.2;
+  mouse.rotation.y = -0.12;
   group.add(mouse);
-  const mBody = mesh(new THREE.SphereGeometry(1, 48, 24), mWhite);
-  mBody.scale.set(0.032, 0.02, 0.054);
-  mBody.position.y = 0.0075;
-  mouse.add(mBody);
-  const split = mesh(new THREE.BoxGeometry(0.0008, 0.0006, 0.03), mBlack, false, false);
-  split.position.set(0, 0.0272, -0.0185);
-  mouse.add(split);
-  const wheel = mesh(new THREE.CylinderGeometry(0.0042, 0.0042, 0.0042, 20), mBlack, false, false);
-  wheel.rotation.z = Math.PI / 2;
-  wheel.position.set(0, 0.0272, -0.026);
-  mouse.add(wheel);
-  kit.addContact(mouse, 0.1, 0.14, { alpha: 0.7, y: -0.0026 });
 
   // ---------- notebook, pencil, cup, and the rest of the desk ----------
-  const NB = { x: -0.8, z: 0.22, ry: 0.3 };
+  const NB = { x: -0.4, z: -0.04, ry: 0.22 };
   const notebook = buildNotebook(kit, opts.fonts);
   notebook.group.position.set(NB.x, 0.0, NB.z);
   notebook.group.rotation.y = NB.ry;
   group.add(notebook.group);
 
   const pencil = buildPencil(kit);
-  pencil.position.set(-0.64, 0.0, 0.34);
+  pencil.position.set(-0.28, 0.0, 0.07);
   pencil.rotation.y = -0.55;
   group.add(pencil);
 
-  const CUP = { x: -0.62, z: -0.27 };
+  const CUP = { x: -0.31, z: -0.37 };
   const cup = buildCup(kit);
   cup.group.position.set(CUP.x, 0, CUP.z);
   cup.group.rotation.y = 0.7;
   group.add(cup.group);
 
   const clock = buildClock(kit);
-  clock.group.position.set(0.72, 0.0, -0.3);
+  clock.group.position.set(0.31, 0.0, -0.44);
   clock.group.rotation.y = -0.22;
   group.add(clock.group);
 
-  const stickies = buildStickies(kit, opts.fonts);
-  stickies.position.set(0.5, 0.004, -0.1);
-  group.add(stickies);
-
-  const phones = buildHeadphones(kit);
-  phones.position.set(1.04, 0, -0.2);
-  phones.rotation.y = -0.4;
-  group.add(phones);
-
-  const books = buildBooks(kit);
-  books.position.set(1.22, 0, 0.0);
-  books.rotation.y = 0.28;
-  group.add(books);
-
-  // a small pick on the mat: a nod to the rest of the site
-  const pickShape = new THREE.Shape();
-  pickShape.moveTo(0, -0.0165);
-  pickShape.quadraticCurveTo(0.0185, -0.0015, 0.0105, 0.0125);
-  pickShape.quadraticCurveTo(0, 0.0185, -0.0105, 0.0125);
-  pickShape.quadraticCurveTo(-0.0185, -0.0015, 0, -0.0165);
-  const pickGeo = track(
-    new THREE.ExtrudeGeometry(pickShape, {
-      depth: 0.0008,
-      bevelEnabled: true,
-      bevelThickness: 0.0003,
-      bevelSize: 0.0003,
-      bevelSegments: 2,
-      curveSegments: 14,
-    })
-  );
-  const pick = new THREE.Mesh(pickGeo, std({ color: 0xdadad6, roughness: 0.3 }));
-  pick.castShadow = true;
-  pick.rotation.x = -Math.PI / 2;
-  pick.rotation.z = 0.7;
-  pick.position.set(0.02, 0.0055, 0.44);
-  group.add(pick);
+  // plants: a Monstera in the back corner, a snake plant beside the pad
+  const monstera = buildMonstera(kit, 3);
+  monstera.group.position.set(0.5, 0, -0.38);
+  monstera.group.rotation.y = 0.5;
+  monstera.group.scale.setScalar(0.78);
+  group.add(monstera.group);
+  const snake = buildSnakePlant(kit, 9);
+  snake.group.position.set(0.55, 0, -0.1);
+  group.add(snake.group);
+  const plantHit = (x: number, y: number, z: number, w: number, h: number, id: string, title: string, note: string) => {
+    const m = new THREE.Mesh(
+      track(new THREE.BoxGeometry(w, h, w)),
+      track(new THREE.MeshBasicMaterial({ visible: false }))
+    );
+    m.position.set(x, y, z);
+    m.userData = { id, title, label: "TOUCH", note } satisfies DeskPickData;
+    group.add(m);
+    return m;
+  };
+  const rubberHit = plantHit(0.5, 0.2, -0.38, 0.3, 0.42, "plant-monstera", "Monstera", "It leans toward the window that isn't there.");
+  const snakeHit = plantHit(0.55, 0.13, -0.1, 0.1, 0.26, "plant-snake", "Snake plant", "The one plant that forgives me.");
 
   // ---------- the wall: posters and prints that say who's at the desk ----------
   const WALL_Z = -0.618;
   const defs = posterDefs(opts.fonts);
-  const hang = posterLayout(defs);
+
+  // a narrow oak ledge under the triptych: two albums lean on it, a pothos trails off the end
+  const LEDGE = { x: -0.1, y: 0.36, w: 0.5, d: 0.1, t: 0.016 };
+  const ledge = mesh(
+    new RoundedBoxGeometry(LEDGE.w, LEDGE.t, LEDGE.d, 2, 0.004),
+    std({ color: 0xb59a74, roughness: 0.6 })
+  );
+  ledge.position.set(LEDGE.x, LEDGE.y, WALL_Z + LEDGE.d / 2);
+  group.add(ledge);
+  const pothos = buildPothos(kit, 5);
+  pothos.group.position.set(LEDGE.x + LEDGE.w / 2 - 0.08, LEDGE.y + LEDGE.t / 2, WALL_Z + 0.065);
+  pothos.group.scale.setScalar(1);
+  group.add(pothos.group);
+  const pothosHit = plantHit(LEDGE.x + LEDGE.w / 2 - 0.08, LEDGE.y - 0.04, WALL_Z + 0.07, 0.24, 0.34, "plant-pothos", "Pothos", "Trailing a little further every month.");
+
   const frames = defs.map((d) => {
     const f = buildFrame(kit, {
       w: d.w,
       h: d.h,
-      border: d.w > 0.4 ? 0.01 : 0.008,
+      border: d.w > 0.3 ? 0.011 : 0.008,
       finish: d.finish,
       mat: d.mat,
       tex: track(d.fallback()),
       data: { id: d.id, title: d.title, label: "VIEW", note: d.note } satisfies DeskPickData,
     });
-    const [x, y] = hang[d.id];
-    f.group.position.set(x, y, WALL_Z);
+    if (d.shelf) {
+      f.group.position.set(d.x, LEDGE.y + LEDGE.t / 2 + d.h / 2 - 0.003, WALL_Z + LEDGE.d * 0.6);
+      f.group.rotation.x = -0.1;
+    } else {
+      f.group.position.set(d.x, d.y, WALL_Z);
+    }
+    f.group.rotation.z = d.tilt ?? 0;
     group.add(f.group);
     return { def: d, frame: f };
   });
@@ -685,11 +695,11 @@ export function buildDesk(opts: { quality: "high" | "low"; fonts: SceneFonts }):
   };
 
   // ---------- the lamp: the scene's one real light ----------
-  const lampBase = new THREE.Vector3(-1.04, 0.0, -0.36);
-  const j1 = new THREE.Vector3(-0.98, 0.3, -0.33);
-  const j2 = new THREE.Vector3(-0.86, 0.58, -0.27);
-  const headPos = new THREE.Vector3(-0.76, 0.6, -0.21);
-  const lookAtPoint = new THREE.Vector3(0.02, 0.0, 0.1);
+  const lampBase = new THREE.Vector3(-0.56, 0.0, -0.44);
+  const j1 = new THREE.Vector3(-0.51, 0.26, -0.41);
+  const j2 = new THREE.Vector3(-0.4, 0.46, -0.36);
+  const headPos = new THREE.Vector3(-0.3, 0.5, -0.28);
+  const lookAtPoint = new THREE.Vector3(-0.06, 0.0, -0.06);
 
   const lampBaseMesh = mesh(new THREE.CylinderGeometry(0.07, 0.078, 0.016, 48), mLampBlack);
   lampBaseMesh.position.copy(lampBase).setY(0.008);
@@ -735,11 +745,15 @@ export function buildDesk(opts: { quality: "high" | "low"; fonts: SceneFonts }):
   group.add(spot, spot.target);
 
   // cool fills: they keep the black laptop and the white peripherals apart
-  const hemi = new THREE.HemisphereLight(0x8fa8cc, 0x1a140f, 0.3);
+  const hemi = new THREE.HemisphereLight(0xcfdcf0, 0x2a2a2e, 0.7);
   group.add(hemi);
-  const rim = new THREE.DirectionalLight(0xaec8ff, 0.5);
+  const rim = new THREE.DirectionalLight(0xbfd4ff, 0.9);
   rim.position.set(1.4, 0.9, -0.5);
   group.add(rim);
+  // a large soft key from the front-left, like a window you cannot see
+  const fill = new THREE.DirectionalLight(0xfff3e4, 0);
+  fill.position.set(-0.8, 1.3, 1.5);
+  group.add(fill);
   // a gentle warm wash on the wall so the prints sit in a pool of light
   const wash = new THREE.SpotLight(0xffd8a8, 0, 0, 0.55, 1, 2);
   wash.position.set(-0.3, 1.5, 0.9);
@@ -867,13 +881,14 @@ export function buildDesk(opts: { quality: "high" | "low"; fonts: SceneFonts }):
   let focusDim = 1;
   const applyLamp = () => {
     const k = clamp(lampValue, 0, 1.2);
-    spot.intensity = 7.2 * k * focusDim;
+    spot.intensity = 3.4 * k * focusDim;
     bulbMat.color.setScalar(0.04 + 1.0 * k);
     bulbMat.color.multiply(new THREE.Color(1, 0.9, 0.75));
     beamMat.uniforms.uI.value = k;
     dustMat.uniforms.uI.value = k;
-    hemi.intensity = 0.3 * clamp(k * 1.5);
-    rim.intensity = 0.5 * clamp(k * 1.5);
+    hemi.intensity = 0.7 * clamp(k * 1.5);
+    fill.intensity = 0.8 * clamp(k * 1.5);
+    rim.intensity = 0.9 * clamp(k * 1.5);
     wash.intensity = 2.6 * clamp(k);
   };
   const setLamp = (v: number) => {
@@ -1070,8 +1085,68 @@ export function buildDesk(opts: { quality: "high" | "low"; fonts: SceneFonts }):
     notebook.hit,
     cup.hit,
     screenHit,
+    rubberHit,
+    snakeHit,
+    pothosHit,
     ...frames.map((f) => f.frame.hit),
   ];
+
+  // ---------- a loose sheet whose far corner lifts in a passing breeze ----------
+  const SHEET = { w: 0.15, d: 0.21 };
+  const sheetGeo = track(new THREE.PlaneGeometry(SHEET.w, SHEET.d, 8, 10));
+  sheetGeo.rotateX(-Math.PI / 2);
+  const sheetPos = sheetGeo.attributes.position as THREE.BufferAttribute;
+  const sheetRest = new Float32Array(sheetPos.array as Float32Array);
+  const sheetMesh = new THREE.Mesh(sheetGeo, std({ color: 0xf0ede5, roughness: 0.95, side: THREE.DoubleSide }));
+  sheetMesh.castShadow = true;
+  sheetMesh.receiveShadow = true;
+  sheetMesh.position.set(-0.57, 0.0012, -0.2);
+  sheetMesh.rotation.y = 0.22;
+  group.add(sheetMesh);
+  const sheetCorner = new THREE.Vector3();
+  const sheet = {
+    lift: 0,
+    vel: 0,
+    update(dt: number) {
+      if (Math.abs(this.lift) < 0.0004 && Math.abs(this.vel) < 0.002) return;
+      const h = Math.min(dt, 1 / 30);
+      this.vel += (-70 * this.lift - 5.5 * this.vel) * h;
+      this.lift = clamp(this.lift + this.vel * h, 0, 1);
+      for (let i = 0; i < sheetPos.count; i++) {
+        const x = sheetRest[i * 3];
+        const z = sheetRest[i * 3 + 2];
+        const fx = clamp((x + SHEET.w / 2) / SHEET.w);
+        const fz = clamp((SHEET.d / 2 - z) / SHEET.d);
+        sheetPos.setY(i, this.lift * 0.05 * Math.pow(fx, 1.6) * Math.pow(fz, 1.6));
+      }
+      sheetPos.needsUpdate = true;
+      sheetGeo.computeVertexNormals();
+    },
+  };
+  let airReady = false;
+  const _o = new THREE.Vector3();
+  const blow = (origin: THREE.Vector3, dir: THREE.Vector3, velocity: THREE.Vector3) => {
+    if (!airReady) {
+      group.updateMatrixWorld(true);
+      monstera.refresh();
+      snake.refresh();
+      pothos.refresh();
+      airReady = true;
+    }
+    monstera.blow(origin, dir, velocity, 1);
+    snake.blow(origin, dir, velocity, 1);
+    pothos.blow(origin, dir, velocity, 1);
+    // the sheet: its far corner, with the same ray-distance falloff
+    sheetCorner.set(SHEET.w / 2, 0.01, -SHEET.d / 2);
+    sheetMesh.localToWorld(sheetCorner);
+    _o.copy(sheetCorner).sub(origin);
+    const t = _o.dot(dir);
+    if (t > 0) {
+      const d = _o.sub(dir.clone().multiplyScalar(t)).length();
+      const f = Math.exp(-Math.pow(d / 0.1, 2)) * Math.min(2, velocity.length());
+      if (f > 0.05) sheet.vel += f * 0.9;
+    }
+  };
 
   let dirtyKeys = true;
   const update = (t: number, dt: number, viewScale: number) => {
@@ -1080,6 +1155,10 @@ export function buildDesk(opts: { quality: "high" | "low"; fonts: SceneFonts }):
     sigMat.uniforms.uT.value = t;
     cup.update(t, viewScale);
     notebook.update(t);
+    monstera.update(t, dt);
+    sheet.update(dt);
+    snake.update(t, dt);
+    pothos.update(t, dt);
 
     if (scr.typing) {
       if (scr.t0 < 0) scr.t0 = t;
@@ -1142,16 +1221,22 @@ export function buildDesk(opts: { quality: "high" | "low"; fonts: SceneFonts }):
       mouse: MOUSE0.clone(),
       notebook: new THREE.Vector3(NB.x, 0.01, NB.z),
       cup: new THREE.Vector3(CUP.x, 0.07, CUP.z),
-      laptop: new THREE.Vector3(-0.3, 0.1, -0.06),
+      laptop: new THREE.Vector3(0, 0.12, -0.32),
     },
     pickables,
     setLid,
     setLamp,
     setState,
     setHover(id) {
+      if (id && id !== hoverId) {
+        if (id === "plant-monstera") monstera.puff(0.5);
+        else if (id === "plant-snake") snake.puff(0.5);
+        else if (id === "plant-pothos") pothos.puff(0.5);
+      }
       hoverId = id;
     },
     loadPosters,
+    blow,
     startTyping() {
       scr.typing = true;
       scr.sub = 0;

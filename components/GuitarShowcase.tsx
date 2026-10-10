@@ -17,7 +17,7 @@ import {
 import { mixColor, smoothstep, lerp } from "@/lib/color";
 import { guitarSynth, STRING_NOTES, AUDIO_STATE_EVENT } from "@/lib/audio";
 import { type BlobShape, randomBlobShape, drawBlobPath } from "@/lib/blob";
-import { TOP_PROJECTS } from "@/data/projects";
+import { STRING_PROJECTS } from "@/data/projects";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -417,7 +417,7 @@ export default function GuitarShowcase() {
     };
   }, []);
 
-  const activeProject = activeIndex >= 0 ? TOP_PROJECTS[activeIndex] : null;
+  const activeProject = activeIndex >= 0 ? STRING_PROJECTS[activeIndex] : null;
 
   return (
     <section
@@ -499,7 +499,7 @@ export default function GuitarShowcase() {
                 style={{ background: activeProject.color }}
               />
               <p className="text-xs tracking-widest uppercase opacity-50 mb-1">
-                {activeProject.category} · {activeProject.year}
+                {[activeProject.category, activeProject.year].filter(Boolean).join(" · ")}
               </p>
               <h3 className="font-display font-bold text-2xl mb-2">
                 {activeProject.title}

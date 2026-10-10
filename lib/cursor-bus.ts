@@ -1,19 +1,20 @@
 /**
  * A tiny shared store between the 3D scene and the cursor. The scene never
- * touches the cursor's DOM; it only publishes what the cursor should know:
+ * touches the cursor's DOM; it only publishes meaning:
  *  - digital: 0 → 1 as the camera crosses into the laptop (and back out)
- *  - hint:    a short label for an interactive 3D object under the pointer
- *  - rect:    that object's screen-space bounds, so the cursor can align to it
+ *  - kind:    what the 3D object under the pointer *is* (explore / project)
+ *  - hint:    its short label
+ * The cursor never measures elements: it reacts to these kinds only.
  */
-export type CursorRect = { x: number; y: number; w: number; h: number; r: number };
+export type CursorKind = "object" | "project";
 
 export type CursorState = {
   digital: number;
+  kind: CursorKind | null;
   hint: string | null;
-  rect: CursorRect | null;
 };
 
-export const cursorState: CursorState = { digital: 0, hint: null, rect: null };
+export const cursorState: CursorState = { digital: 0, kind: null, hint: null };
 
 const listeners = new Set<() => void>();
 

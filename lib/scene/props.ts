@@ -596,3 +596,116 @@ export function buildFrame(kit: Kit, o: FrameOpts) {
     },
   };
 }
+
+/* ============================ wireless mouse ======================== */
+
+/**
+ * A premium white wireless mouse: a lofted shell (arched along its length,
+ * domed across it, with a lower waist and a rolled base lip), a split between
+ * the two buttons, a scroll wheel, and a dark underside. 112 mm long.
+ */
+export function buildMouse(kit: Kit) {
+  const g = new THREE.Group();
+  const L = 0.112;
+  const W = 0.062;
+  const H = 0.038;
+  const NU = 44;
+  const NV = 28;
+  const pos: number[] = [];
+  const idx: number[] = [];
+  // u: 0 back → 1 front (−z). v: −1..1 across.
+  const shellW = (u: number) => W * 0.5 * (0.74 + 0.26 * Math.sin(Math.PI * Math.pow(u, 0.75)) - 0.12 * Math.pow(u, 3) + 0.06 * Math.exp(-Math.pow((u - 0.55) / 0.2, 2)) * -1);
+  const shellH = (u: number) => H * Math.pow(Math.sin(Math.PI * Math.pow(u, 0.82)), 0.7) * (1 - 0.18 * u);
+  for (let i = 0; i <= NU; i++) {
+    const u = i / NU;
+    for (let j = 0; j <= NV; j++) {
+      const v = (j / NV) * 2 - 1;
+      const w = shellW(u);
+      const x = v * w;
+      const dome = Math.pow(Math.max(0, 1 - v * v), 0.55);
+      const y = 0.003 + shellH(u) * dome;
+      const z = (u - 0.5) * -L; // front toward −z
+      pos.push(x, y, z);
+    }
+  }
+  for (let i = 0; i < NU; i++) {
+    for (let j = 0; j < NV; j++) {
+      const a = i * (NV + 1) + j;
+      const b = a + NV + 1;
+      idx.push(a, b, a + 1, a + 1, b, b + 1);
+    }
+  }
+  const geo = kit.track(new THREE.BufferGeometry());
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  const shellMat = kit.track(
+    new THREE.MeshPhysicalMaterial({ color: 0xf0efeb, roughness: 0.42, metalness: 0, clearcoat: 0.25, clearcoatRoughness: 0.5, side: THREE.DoubleSide })
+  );
+  const shell = new THREE.Mesh(geo, shellMat);
+  shell.castShadow = true;
+  shell.receiveShadow = true;
+  g.add(shell);
+
+  const dark = kit.track(new THREE.MeshStandardMaterial({ color: 0x1b1c1e, roughness: 0.6 }));
+  // underside / skirt
+  const base = kit.mesh(new RoundedBoxGeometry(W * 0.86, 0.004, L * 0.9, 2, 0.0015), dark, false, false);
+  base.position.y = 0.0025;
+  g.add(base);
+  // seam between the buttons: from the front to about 42% of the length
+  const seam = kit.mesh(new THREE.BoxGeometry(0.0007, 0.0006, L * 0.42), dark, false, false);
+  const seamY = 0.003 + shellH(0.78);
+  seam.position.set(0, seamY - 0.0002, -L * 0.29);
+  g.add(seam);
+  const sideLine = kit.mesh(new THREE.BoxGeometry(W * 0.84, 0.0005, 0.0007), dark, false, false);
+  sideLine.position.set(0, seamY - 0.0016, -L * 0.09);
+  g.add(sideLine);
+  const wheel = kit.mesh(new THREE.CylinderGeometry(0.0046, 0.0046, 0.0052, 20), dark, false, false);
+  wheel.rotation.z = Math.PI / 2;
+  wheel.position.set(0, seamY - 0.0002, -L * 0.22);
+  g.add(wheel);
+  kit.addContact(g, 0.085, 0.13, { alpha: 0.7, y: 0.0003 });
+  return g;
+}
+
+/* ========================== laptop stand =========================== */
+
+/**
+ * A minimal aluminium stand: two side wedges and a rear bar. The laptop is
+ * tilted to match the slope of the wedge (`tilt`), its front edge resting on
+ * the low end. Returns the group and the geometry the caller needs to seat
+ * the laptop.
+ */
+export function buildLaptopStand(kit: Kit) {
+  const g = new THREE.Group();
+  const alu = std(kit, { color: 0xc6c9cf, roughness: 0.34, metalness: 1 });
+  const depth = 0.22;
+  const front = 0.03;
+  const back = 0.074;
+  const shape = new THREE.Shape();
+  shape.moveTo(-depth / 2, 0);
+  shape.lineTo(depth / 2, 0);
+  shape.lineTo(depth / 2, front);
+  shape.lineTo(-depth / 2, back);
+  shape.lineTo(-depth / 2, 0);
+  const geo = kit.track(
+    new THREE.ExtrudeGeometry(shape, { depth: 0.012, bevelEnabled: true, bevelSize: 0.0012, bevelThickness: 0.0012, bevelSegments: 2 })
+  );
+  for (const x of [-0.105, 0.105]) {
+    const wedge = new THREE.Mesh(geo, alu);
+    wedge.castShadow = true;
+    wedge.receiveShadow = true;
+    wedge.rotation.y = -Math.PI / 2; // shape x → depth along z
+    wedge.position.set(x + 0.006, 0, 0);
+    g.add(wedge);
+  }
+  const bar = kit.mesh(new RoundedBoxGeometry(0.21, 0.012, 0.012, 2, 0.003), alu);
+  bar.position.set(0, 0.06, -depth / 2 + 0.01);
+  g.add(bar);
+  const foot = kit.mesh(new RoundedBoxGeometry(0.21, 0.006, 0.012, 2, 0.002), alu);
+  foot.position.set(0, 0.003, depth / 2 - 0.006);
+  g.add(foot);
+  kit.addContact(g, 0.3, 0.3, { alpha: 0.75, y: 0.0008 });
+  const tilt = Math.atan2(back - front, depth);
+  return { group: g, tilt, front, depth };
+}

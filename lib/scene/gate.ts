@@ -13,6 +13,8 @@ export type GateOpts = {
   subtitle: string;
   width: number;
   fonts: { hero: string };
+  /** "dark" ink for gates seen against a bright sky */
+  tone?: "light" | "dark";
 };
 
 export function buildGate(o: GateOpts) {
@@ -25,7 +27,7 @@ export function buildGate(o: GateOpts) {
     weight: 900,
     px: 200,
     letterSpacing: 0.02,
-    color: "#c9ccd6",
+    color: o.tone === "dark" ? "#17181c" : "#c9ccd6",
   });
   const th = (title.geometry as THREE.PlaneGeometry).parameters.height;
   title.position.y = 0;
@@ -38,7 +40,7 @@ export function buildGate(o: GateOpts) {
     px: 80,
     letterSpacing: 0.26,
     weight: 600,
-    color: "#9ea2ad",
+    color: o.tone === "dark" ? "#34363d" : "#9ea2ad",
   });
   const sh = (sub.geometry as THREE.PlaneGeometry).parameters.height;
   sub.position.y = -(th / 2 + sh * 0.8);
@@ -57,7 +59,7 @@ export function buildGate(o: GateOpts) {
     new THREE.Vector3(hw, bottom, 0),
     new THREE.Vector3(-hw, bottom, 0),
   ]);
-  const frameMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.28, fog: true });
+  const frameMat = new THREE.LineBasicMaterial({ color: o.tone === "dark" ? 0x1b1c20 : 0xffffff, transparent: true, opacity: 0.28, fog: true });
   group.add(new THREE.LineLoop(frameGeo, frameMat));
   const cl = o.width * 0.05;
   const cornerPts: number[] = [];
