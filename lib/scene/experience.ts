@@ -1,10 +1,13 @@
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { studioEnvironment } from "./studio";
+import { TOP_PROJECTS } from "@/data/projects";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { setCursor } from "@/lib/cursor-bus";
+import { D_CROSS, K, STAGES_N, stageStart } from "@/lib/journey";
 import { buildDesk, type Desk, type DeskState } from "./desk";
 import { buildWorld, STAGE_POS, type World } from "./world";
 import { clamp, cssFontFamily, easeInOut, lerp, nextFrame, smoothstep } from "./util";
@@ -47,6 +50,10 @@ export type ExperienceOptions = {
   onHover: (info: HoverInfo | null) => void;
   onLampOn: () => void;
   onKeyTick: () => void;
+  /** ask the browser for the plainest context (a retry after a failed start) */
+  simpleContext?: boolean;
+  /** the finger is on foliage; rustle is 0..1 */
+  onFoliage?: (touching: boolean, rustle: number) => void;
 };
 
 export type Experience = {
@@ -59,21 +66,18 @@ export type Experience = {
   hover(clientX: number, clientY: number): void;
   leave(): void;
   click(clientX: number, clientY: number): PickResult | null;
+  /** what the last frame cost: draw calls, triangles, resident geometries and textures */
+  stats(): { calls: number; triangles: number; geometries: number; textures: number; programs: number };
   dispose(): void;
 };
 
 // The desk acts keep their original timing, scaled into the first part of
 // the scroll; the machine gets the rest, one slice per environment.
-const K = 0.75;
 const D_APPROACH = 0.318; // (desk-domain) the camera starts leaving the notebook for the screen
 const D_PUSH = 0.338; // …and starts pushing through the glass
-const D_CROSS = 0.358; // desk → machine swap
 const P_CROSS = D_CROSS * K; // absolute
 const P_PUSH = D_PUSH * K;
 const P_BACK = 0.905; // machine → desk swap
-const STAGES_N = 6;
-const STAGE_SPAN = 0.62 / STAGES_N;
-const stageStart = (i: number) => P_CROSS + i * STAGE_SPAN;
 
 /** Where the interesting moments sit on the scroll, for jump links. */
 export const MARKS = {
@@ -204,12 +208,13 @@ export async function createExperience(opts: ExperienceOptions): Promise<Experie
     /* fall back to system fonts */
   }
 
-  const renderer = new THREE.WebGLRenderer({
-    canvas,
-    antialias: !lowPower,
-    alpha: false,
-    powerPreference: "high-performance",
-  });
+  // A browser that is short of GPU memory (Safari, after many contexts) can refuse the richer
+  // request: later attempts ask for less.
+  const renderer = new THREE.WebGLRenderer(
+    opts.simpleContext
+      ? { canvas, antialias: false, alpha: false }
+      : { canvas, antialias: !lowPower, alpha: false, powerPreference: "high-performance" }
+  );
   const maxDpr = lowPower ? 1.25 : 1.6;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxDpr));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -230,9 +235,15 @@ export async function createExperience(opts: ExperienceOptions): Promise<Experie
   deskScene.background = new THREE.Color(0x040405);
   const pmrem = new THREE.PMREMGenerator(renderer);
   const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  deskScene.environment = envTex;
-  deskScene.environmentIntensity = 0.2;
-  const desk: Desk = buildDesk({ quality: lowPower ? "low" : "high", fonts });
+  const studioTex = studioEnvironment(renderer);
+  deskScene.environment = studioTex;
+  deskScene.environmentIntensity = 0.62;
+  const desk: Desk = buildDesk({
+    quality: lowPower ? "low" : "high",
+    fonts,
+    projects: TOP_PROJECTS.map((p) => p.title),
+  });
+  desk.setEnvironment(studioTex);
   deskScene.add(desk.group);
   // real posters stream in; stand-in title cards hang until they arrive
   const postersLoaded = desk.loadPosters();
@@ -278,7 +289,7 @@ export async function createExperience(opts: ExperienceOptions): Promise<Experie
   let snapId = "";
   let veilPulse = 0;
   let puff = 0;
-  const clock = new THREE.Clock();
+  const clock = new THREE.Timer();
   const raycaster = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
   let hoverNdc: THREE.Vector2 | null = null;
@@ -575,15 +586,18 @@ export async function createExperience(opts: ExperienceOptions): Promise<Experie
 
   // ---------- loop ----------
   let raf = 0;
+  const debugCam = new URLSearchParams(window.location.search).get("stats") === "1";
+  if (debugCam) (window as unknown as { __desk?: Desk }).__desk = desk;
   const camPos = new THREE.Vector3();
   const camLook = new THREE.Vector3();
 
   const frame = () => {
     raf = requestAnimationFrame(frame);
     if (!active) return;
+    clock.update();
     const rawDt = clock.getDelta();
     const dt = Math.min(rawDt, 0.1);
-    const t = clock.elapsedTime;
+    const t = clock.getElapsed();
 
     prevCur = cur;
     // scroll smoothing runs on real elapsed time, so a throttled frame rate
@@ -613,6 +627,13 @@ export async function createExperience(opts: ExperienceOptions): Promise<Experie
     if (phase === "desk") placeDesk(cur, t, camPos, camLook);
     else placeWorld(cur, camPos, camLook);
 
+    // `?stats=1` pages may pose the camera by hand: window.__cam = { pos: [x,y,z], look: [x,y,z], fov }
+    const dbg = debugCam ? (window as unknown as { __cam?: { pos: number[]; look: number[]; fov?: number } }).__cam : undefined;
+    if (dbg && phase === "desk") {
+      camPos.set(dbg.pos[0], dbg.pos[1], dbg.pos[2]);
+      camLook.set(dbg.look[0], dbg.look[1], dbg.look[2]);
+      if (dbg.fov) camFov = dbg.fov;
+    }
     camera.position.copy(camPos);
     camera.lookAt(camLook);
     if (Math.abs(camera.fov - camFov) > 0.01) {
@@ -674,6 +695,17 @@ export async function createExperience(opts: ExperienceOptions): Promise<Experie
       }
     }
 
+    // the pointer is a finger: every frame, so a still pointer keeps its leaf pressed
+    if (phase === "desk" && cur <= P_PUSH && hoverNdc) {
+      airRay.setFromCamera(hoverNdc, camera);
+      airVel.multiplyScalar(Math.exp(-dt * 9));
+      desk.touch({ origin: airRay.ray.origin, dir: airRay.ray.direction }, airVel);
+      const f = desk.foliage();
+      opts.onFoliage?.(f.touching, f.rustle);
+    } else {
+      desk.touch(null, airVel.set(0, 0, 0));
+    }
+
     if (phase === "world" && composer && bloomPass) {
       bloomPass.strength = world.bloom * 0.7;
       composer.render(dt);
@@ -693,7 +725,10 @@ export async function createExperience(opts: ExperienceOptions): Promise<Experie
     },
     setActive(a) {
       active = a;
-      if (a) clock.getDelta();
+      if (a) {
+        clock.update();
+        clock.getDelta();
+      }
       else {
         lastDigital = -1;
         setCursor({ digital: 0, kind: null, hint: null });
@@ -703,7 +738,7 @@ export async function createExperience(opts: ExperienceOptions): Promise<Experie
     resize,
     intro() {
       if (lampStart >= 0) return;
-      lampStart = clock.elapsedTime;
+      lampStart = clock.getElapsed();
       opts.onLampOn();
       setTimeout(() => desk.startTyping(), 900);
     },
@@ -712,8 +747,7 @@ export async function createExperience(opts: ExperienceOptions): Promise<Experie
     },
     hover(x, y) {
       hoverNdc = toNdc(x, y).clone();
-      // the pointer's air, in world space: where the ray crosses the plane the plants stand on,
-      // and how fast that crossing point moved (so it is right wherever the camera is)
+      // the pointer's velocity in the world, from where its ray crosses the plane the plants stand on
       if (phase !== "desk" || cur > P_PUSH) {
         airPrev = null;
         return;
@@ -726,13 +760,13 @@ export async function createExperience(opts: ExperienceOptions): Promise<Experie
         if (dt > 0.002 && dt < 0.25) {
           airVel.copy(airPt).sub(airPrev.pt).divideScalar(dt);
           if (airVel.length() > 2.4) airVel.setLength(2.4);
-          desk.blow(airRay.ray.origin, airRay.ray.direction, airVel);
         }
       }
       airPrev = { pt: airPt.clone(), t: now };
     },
     leave() {
       hoverNdc = null;
+      airPrev = null;
       if (hoverId) setHoverTarget(null);
     },
     click(x, y) {
@@ -748,6 +782,15 @@ export async function createExperience(opts: ExperienceOptions): Promise<Experie
       }
       if (data.note) return { type: "note", id: data.id, title: data.title, note: data.note };
       return null;
+    },
+    stats() {
+      return {
+        calls: renderer.info.render.calls,
+        triangles: renderer.info.render.triangles,
+        geometries: renderer.info.memory.geometries,
+        textures: renderer.info.memory.textures,
+        programs: renderer.info.programs?.length ?? 0,
+      };
     },
     dispose() {
       cancelAnimationFrame(raf);

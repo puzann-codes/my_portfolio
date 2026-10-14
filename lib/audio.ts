@@ -74,6 +74,12 @@ class GuitarSynth {
     return this.enabled;
   }
 
+  /** The shared output, only while sound is on and the context is running. */
+  output(): { ctx: AudioContext; out: GainNode } | null {
+    if (!this.enabled || !this.ctx || !this.master || this.ctx.state !== "running") return null;
+    return { ctx: this.ctx, out: this.master };
+  }
+
   pluck(freq: number) {
     if (!this.enabled) return;
     const ctx = this.ensureContext();

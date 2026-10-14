@@ -225,9 +225,37 @@ export function buildCup(kit: Kit) {
   handle.position.set(0.0405, 0.05, 0);
   g.add(handle);
 
+  const cremaC = makeCanvas(256, 256);
+  {
+    const x = cremaC.getContext("2d")!;
+    const gr = x.createRadialGradient(128, 128, 6, 128, 128, 128);
+    gr.addColorStop(0, "#24130a");
+    gr.addColorStop(0.55, "#3a2213");
+    gr.addColorStop(0.86, "#6b4527");
+    gr.addColorStop(1, "#2b180c");
+    x.fillStyle = gr;
+    x.fillRect(0, 0, 256, 256);
+    const R = rng(77);
+    for (let i = 0; i < 70; i++) {
+      const a = R() * Math.PI * 2;
+      const r = 70 + R() * 50;
+      x.fillStyle = `rgba(210,170,120,${0.08 + R() * 0.14})`;
+      x.beginPath();
+      x.arc(128 + Math.cos(a) * r, 128 + Math.sin(a) * r, 1 + R() * 2.4, 0, Math.PI * 2);
+      x.fill();
+    }
+  }
   const coffee = kit.mesh(
-    new THREE.CircleGeometry(0.0358, 40),
-    std(kit, { color: 0x0a0605, roughness: 0.08, metalness: 0.2 }),
+    new THREE.CircleGeometry(0.0358, 48),
+    kit.track(
+      new THREE.MeshPhysicalMaterial({
+        map: kit.track(canvasTexture(cremaC, 4)),
+        roughness: 0.14,
+        metalness: 0,
+        clearcoat: 1,
+        clearcoatRoughness: 0.06,
+      })
+    ),
     false,
     false
   );
@@ -559,6 +587,23 @@ export function buildFrame(kit: Kit, o: FrameOpts) {
   const glass = new THREE.Mesh(kit.track(new THREE.PlaneGeometry(iw, ih)), glassMat);
   glass.position.z = depth * 0.82;
   g.add(glass);
+
+  // the soft shadow a hung frame throws on the wall behind it
+  const wallShadow = new THREE.Mesh(
+    kit.track(new THREE.PlaneGeometry(o.w + 0.06, o.h + 0.06)),
+    kit.track(
+      new THREE.MeshBasicMaterial({
+        map: kit.shadowTex,
+        color: 0x000000,
+        transparent: true,
+        opacity: 0.5,
+        depthWrite: false,
+      })
+    )
+  );
+  wallShadow.position.set(0.007, -0.013, -0.0028);
+  wallShadow.renderOrder = 1;
+  g.add(wallShadow);
 
   const hitMesh = hit(kit, o.w, o.h, 0.06, o.data);
   hitMesh.position.z = 0.02;

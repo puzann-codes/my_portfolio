@@ -5,12 +5,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import gsap from "gsap";
-import Mascot from "@/components/Mascot";
 import { guitarSynth } from "@/lib/audio";
+import { sfx } from "@/lib/sfx";
 import { useLenis } from "@/lib/lenis-context";
 import { prefersReducedMotion } from "@/lib/motion";
 import type { Experience } from "@/lib/scene/experience";
 import { TOP_PROJECTS } from "@/data/projects";
+import ActStage, { type Card } from "@/components/ActStage";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -21,62 +22,64 @@ type Props = {
   onUnsupported: () => void;
 };
 
-type StageInfo = {
-  act: number;
-  kicker: string;
-  title: string;
-  line: string;
-  cta?: { href: string; label: string };
-};
-
 // index = the director's stage (see STAGE_AT in lib/scene/experience.ts)
 const project = (slug: string) => TOP_PROJECTS.find((p) => p.slug === slug)!;
-const projectStage = (slug: string): StageInfo => {
+const projectCard = (slug: string): Card => {
   const p = project(slug);
   return {
-    act: 3,
-    kicker: `Act 04 — ${p.category.split(" · ")[0]}`,
+    numeral: "IV",
+    kicker: p.category.split(" · ")[0],
     title: p.title,
     line: p.summary,
-    cta: { href: `/work/${p.slug}`, label: "Open case study" },
+    cta: { href: `/work/${p.slug}`, label: "Open the case study" },
   };
 };
 
-const STAGES: (StageInfo | null)[] = [
-  null,
+const CARDS: (Card | null)[] = [
   {
-    act: 1,
-    kicker: "Act 02 — The input",
+    numeral: "I",
+    kicker: "The workspace",
+    title: "Pujan Bhatt",
+    line: "AI engineer & full-stack developer. Everything on this desk does something. Scroll.",
+  },
+  {
+    numeral: "II",
+    kicker: "The input",
     title: "It starts with keystrokes",
     line: "Watch the keys, and the screen. The mouse is doing something too.",
   },
   {
-    act: 1,
-    kicker: "Act 02 — A pause",
+    numeral: "II",
+    kicker: "A pause",
     title: "Coffee first",
     line: "Not every part of the process is code.",
   },
   {
-    act: 2,
-    kicker: "Act 03 — The idea",
+    numeral: "III",
+    kicker: "The idea",
     title: "An idea is only the beginning",
     line: "A complaint finding its office, evidence becoming a timeline, a loop that investigates.",
   },
-  projectStage("sunuwa"),
-  projectStage("crash-capsule"),
-  projectStage("harvo"),
-  projectStage("learnscape-ai"),
-  projectStage("mul"),
+  projectCard("sunuwa"),
+  projectCard("crash-capsule"),
+  projectCard("harvo"),
+  projectCard("learnscape-ai"),
+  projectCard("mul"),
   {
-    act: 4,
-    kicker: "Act 05 — The stack",
+    numeral: "V",
+    kicker: "The stack",
     title: "Linux, code, computer science",
     line: "The part of the stack I like to understand all the way down.",
   },
-  null,
+  {
+    numeral: "VI",
+    kicker: "Beyond the desk",
+    title: "Laptop closed. Let's talk.",
+    line: "If you've got something to build (AI, full-stack, or just strange), I'd like to hear about it.",
+  },
 ];
 
-const CONTACT_STAGE = STAGES.length - 1;
+const CONTACT_STAGE = CARDS.length - 1;
 
 // the journey's six acts: label + where to jump
 const ACTS = [
@@ -88,12 +91,9 @@ const ACTS = [
   { label: "Beyond the desk", p: 0.96 },
 ];
 
-const INKY_QUIPS = [
-  "Hi, I'm Inky. I live in the laptop.",
-  "Try pressing some keys.",
-  "Scroll. It gets weirder.",
-  "Poke the posters. And the notebook.",
-];
+// which of the six acts each director stage belongs to (for the navigation dots)
+const ACT_OF_STAGE = [0, 1, 1, 2, 3, 3, 3, 3, 3, 4, 5];
+
 
 function webglSupported() {
   // `?webgl=off` lets the no-3D fallback be reviewed
@@ -111,7 +111,9 @@ export default function DeskJourney({ go, onLoad, onUnsupported }: Props) {
   const lenis = useLenis();
   const containerRef = useRef<HTMLElement | null>(null);
   const stickyRef = useRef<HTMLDivElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // the canvas is created per mount (see the effect): a WebGL context that has been
+  // released can never be handed back to a new renderer
+  const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const veilRef = useRef<HTMLDivElement | null>(null);
   const tipRef = useRef<HTMLDivElement | null>(null);
   const expRef = useRef<Experience | null>(null);
@@ -173,10 +175,24 @@ export default function DeskJourney({ go, onLoad, onUnsupported }: Props) {
   }, []);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
+    const host = canvasHostRef.current;
     const container = containerRef.current;
     const sticky = stickyRef.current;
-    if (!canvas || !container || !sticky) return;
+    if (!host || !container || !sticky) return;
+    // Each mount (StrictMode, Fast Refresh, a route change) gets its own canvas, because
+    // disposing an experience deliberately loses its context, and a lost context left on a
+    // reused canvas makes the next WebGLRenderer throw "reading 'precision'".
+    const makeCanvas = () => {
+      const c = document.createElement("canvas");
+      c.setAttribute("aria-hidden", "true");
+      c.className = "absolute inset-0 block h-full w-full";
+      c.addEventListener("webglcontextcreationerror", (e) =>
+        console.warn("WebGL context creation error:", (e as WebGLContextEvent).statusMessage)
+      );
+        host.appendChild(c);
+      return c;
+    };
+    let canvas = makeCanvas();
 
     let cancelled = false;
     let st: ScrollTrigger | null = null;
@@ -195,11 +211,21 @@ export default function DeskJourney({ go, onLoad, onUnsupported }: Props) {
 
       const { createExperience } = await import("@/lib/scene/experience");
       if (cancelled) return;
-      let exp: Experience;
+      let exp: Experience | null = null;
+      // Safari can hand back a context that is already lost when contexts are recycled quickly
+      // (it fails inside the renderer's constructor): retry once on a fresh canvas.
+      for (let attempt = 0; attempt < 3 && !exp; attempt++) {
+        if (attempt > 0) {
+          canvas.remove();
+          canvas = makeCanvas();
+          await new Promise((r) => setTimeout(r, 500));
+          if (cancelled) return;
+        }
       try {
         exp = await createExperience({
           canvas,
-          lowPower,
+          lowPower: lowPower || attempt > 0,
+          simpleContext: attempt > 0,
           reduced: reducedMotion,
           onLoad: (v, label) => onLoadRef.current(v, label),
           onStage: setStage,
@@ -208,10 +234,19 @@ export default function DeskJourney({ go, onLoad, onUnsupported }: Props) {
           },
           onHover: (info) => setTip(info ? { title: info.title } : null),
           onLampOn: () => guitarSynth.click(),
-          onKeyTick: () => guitarSynth.tick(),
+          onKeyTick: () => {
+            // the choreography's own keystrokes: a plausible letter, pressed and let go
+            const code = "Key" + "ASDFGHJKLQWERTYUIOP"[Math.floor(Math.random() * 19)];
+            sfx.keyDown(code);
+            setTimeout(() => sfx.keyUp(code), 70 + Math.random() * 50);
+          },
+          onFoliage: (_touching, rustle) => sfx.rustle(rustle),
         });
       } catch (err) {
         console.warn("desk journey failed to start", err);
+      }
+      }
+      if (!exp) {
         onUnsupportedRef.current();
         return;
       }
@@ -220,6 +255,12 @@ export default function DeskJourney({ go, onLoad, onUnsupported }: Props) {
         return;
       }
       expRef.current = exp;
+      // `?stats=1` exposes what a frame costs, for checking the scene's budget
+      if (new URLSearchParams(window.location.search).get("stats") === "1") {
+        const w = window as unknown as { __stats?: () => unknown; __audio?: unknown };
+        w.__stats = () => exp.stats();
+        w.__audio = { sfx, guitarSynth };
+      }
       if (goRef.current) exp.intro();
 
       st = ScrollTrigger.create({
@@ -255,8 +296,8 @@ export default function DeskJourney({ go, onLoad, onUnsupported }: Props) {
         exp.key(e.code, down);
         if (down) {
           if (e.key === "Escape") setNote(null);
-          else guitarSynth.tick();
-        }
+          sfx.keyDown(e.code);
+        } else sfx.keyUp(e.code);
       };
       const kd = onKey(true);
       const ku = onKey(false);
@@ -286,11 +327,11 @@ export default function DeskJourney({ go, onLoad, onUnsupported }: Props) {
       cleanups.forEach((c) => c());
       expRef.current?.dispose();
       expRef.current = null;
+      canvas.remove();
     };
   }, [router, showNote, jumpTo]);
 
-  const info = STAGES[stage];
-  const act = stage === 0 ? 0 : stage === CONTACT_STAGE ? 5 : (info?.act ?? 0);
+  const act = ACT_OF_STAGE[stage] ?? 0;
 
   return (
     <section
@@ -301,7 +342,7 @@ export default function DeskJourney({ go, onLoad, onUnsupported }: Props) {
       style={{ height: reduced ? "1300vh" : "2600vh" }}
     >
       <div ref={stickyRef} className="sticky top-0 h-[100svh] w-full overflow-hidden">
-        <canvas ref={canvasRef} aria-hidden="true" className="absolute inset-0 block h-full w-full" />
+        <div ref={canvasHostRef} className="absolute inset-0" />
 
         {/* screen-reader and no-3D route into the work: same content, plain links */}
         <nav aria-label="Projects" className="sr-only">
@@ -340,66 +381,28 @@ export default function DeskJourney({ go, onLoad, onUnsupported }: Props) {
           style={{ opacity: 0 }}
         />
 
-        {/* a soft shade so the captions stay readable over the white desk and paper */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute left-0 bottom-0 h-[46vh] w-[min(54rem,100vw)] bg-gradient-to-tr from-black/65 via-black/30 to-transparent"
+        {/* the acts: centred title cards, then a quiet subtitle */}
+        <ActStage
+          onPlay={(s) => sfx.transition(s === 4 ? "enter" : s === CONTACT_STAGE ? "close" : "act", s)}
+          stage={stage}
+          cards={CARDS}
+          live={go}
+          reduced={reduced}
+          endStage={CONTACT_STAGE}
+          onReplay={() => jumpTo(0)}
         />
 
-        {/* Act 01: a quiet introduction that leaves the desk uncovered */}
+        {/* a soft shade at the foot of the frame keeps the subtitles legible over the white desk */}
         <div
-          className={`pointer-events-none absolute left-6 md:left-10 bottom-8 md:bottom-12 max-w-[min(26rem,80vw)] transition-all duration-700 ${
-            stage === 0 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
+          aria-hidden="true"
+          className={`pointer-events-none absolute inset-x-0 bottom-0 h-[38vh] bg-gradient-to-t from-black/70 via-black/30 to-transparent transition-opacity duration-1000 ${
+            stage === 0 ? "opacity-60" : "opacity-100"
           }`}
-        >
-          <p className="font-display text-[11px] tracking-[0.3em] uppercase text-white/55 mb-2">
-            Act 01 — The workspace
-          </p>
-          <p className="font-display font-extrabold text-xl md:text-2xl tracking-tight">Pujan Bhatt</p>
-          <p className="text-sm md:text-base leading-relaxed text-white/75 mt-1">
-            AI engineer &amp; full-stack developer. Everything on this desk does something. Scroll.
-          </p>
-        </div>
-
-        {/* acts 02 – 05 */}
-        <div className="absolute left-6 md:left-10 bottom-8 md:bottom-12 max-w-[min(32rem,86vw)]">
-          {STAGES.map((s, i) =>
-            s ? (
-              <div
-                key={i}
-                aria-hidden={stage !== i}
-                className={`transition-all duration-700 ease-out ${
-                  stage === i
-                    ? "opacity-100 translate-y-0"
-                    : "pointer-events-none opacity-0 translate-y-3 absolute left-0 bottom-0"
-                }`}
-              >
-                <p className="font-display text-[11px] tracking-[0.3em] uppercase text-white/55 mb-3">
-                  {s.kicker}
-                </p>
-                <h2 className="font-display font-bold text-xl md:text-3xl leading-tight tracking-tight mb-2">
-                  {s.title}
-                </h2>
-                <p className="text-sm md:text-base leading-relaxed text-white/80">{s.line}</p>
-                {s.cta && (
-                  <Link
-                    href={s.cta.href}
-                   
-                    className="pill-btn pill-btn-dark mt-5 pointer-events-auto text-xs"
-                    tabIndex={stage === i ? 0 : -1}
-                  >
-                    {s.cta.label}
-                    <span aria-hidden="true">→</span>
-                  </Link>
-                )}
-              </div>
-            ) : null
-          )}
-        </div>
+        />
 
         {/* scroll hint */}
         <div
-          className={`pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-6 md:bottom-8 flex flex-col items-center gap-3 transition-opacity duration-700 ${
+          className={`pointer-events-none absolute left-6 md:left-10 bottom-6 md:bottom-8 hidden md:flex flex-col items-start gap-3 transition-opacity duration-700 ${
             stage === 0 ? "opacity-100" : "opacity-0"
           }`}
         >
@@ -446,15 +449,6 @@ export default function DeskJourney({ go, onLoad, onUnsupported }: Props) {
           </ul>
         </nav>
 
-        {/* Inky lives on the desk */}
-        <div
-          className={`absolute right-5 md:right-10 bottom-6 md:bottom-10 transition-opacity duration-700 ${
-            stage === 0 ? "opacity-100" : "opacity-0 pointer-events-none"
-          }`}
-        >
-          <Mascot quips={INKY_QUIPS} size={60} tone="light" />
-        </div>
-
         {/* a note found on the desk (keyboard, posters) */}
         <div
           role="status"
@@ -481,79 +475,6 @@ export default function DeskJourney({ go, onLoad, onUnsupported }: Props) {
               <p className="text-sm leading-relaxed text-white/85">{note.text}</p>
             </div>
           )}
-        </div>
-
-        {/* Act 06: beyond the desk */}
-        <div
-          className={`absolute inset-x-0 bottom-0 flex justify-start md:justify-end px-6 md:px-14 pb-8 md:pb-10 transition-all duration-1000 ${
-            stage === CONTACT_STAGE ? "opacity-100" : "pointer-events-none opacity-0"
-          }`}
-          aria-hidden={stage !== 9}
-        >
-          <div className="max-w-md rounded-2xl bg-black/45 backdrop-blur-sm p-5 md:p-6">
-            <p className="font-display text-[11px] tracking-[0.3em] uppercase text-white/55 mb-4">
-              Act 06 — Beyond the desk
-            </p>
-            <h2 className="font-display font-black text-[9vw] md:text-[2.8vw] leading-[0.98] tracking-tight mb-4">
-              Laptop closed.
-              <br />
-              Let&apos;s talk.
-            </h2>
-            <p className="text-sm md:text-base leading-relaxed text-white/75 mb-5">
-              If you&apos;ve got something to build (AI, full-stack, or just strange), I&apos;d like
-              to hear about it.
-            </p>
-            <ul className="flex flex-wrap items-center gap-x-5 gap-y-3 text-sm">
-              <li>
-                <a
-                  href="mailto:rohitpoudel020@gmail.com"
-                  data-cursor-label="EMAIL"
-                  tabIndex={stage === CONTACT_STAGE ? 0 : -1}
-                  className="pill-btn pill-btn-dark"
-                >
-                  Say hello
-                  <span aria-hidden="true">→</span>
-                </a>
-              </li>
-              <li>
-                <a
-                  href="https://github.com"
-                  target="_blank"
-                  rel="noreferrer"
-                  tabIndex={stage === CONTACT_STAGE ? 0 : -1}
-                  className="wiggle text-white/85"
-                >
-                  GitHub
-                </a>
-              </li>
-              <li>
-                <a
-                  href="https://linkedin.com"
-                  target="_blank"
-                  rel="noreferrer"
-                  tabIndex={stage === CONTACT_STAGE ? 0 : -1}
-                  className="wiggle text-white/85"
-                >
-                  LinkedIn
-                </a>
-              </li>
-              <li>
-                <Link href="/work" tabIndex={stage === CONTACT_STAGE ? 0 : -1} className="wiggle text-white/85">
-                  All projects
-                </Link>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={() => jumpTo(0)}
-                  tabIndex={stage === CONTACT_STAGE ? 0 : -1}
-                  className="wiggle text-white/55"
-                >
-                  Replay from the top
-                </button>
-              </li>
-            </ul>
-          </div>
         </div>
 
         {/* hover title for whatever object the pointer is over */}
