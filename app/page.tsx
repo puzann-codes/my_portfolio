@@ -4,20 +4,19 @@ import { useCallback, useEffect, useState } from "react";
 import Loader from "@/components/Loader";
 import Hero from "@/components/Hero";
 import DeskJourney from "@/components/DeskJourney";
-import GuitarShowcase from "@/components/GuitarShowcase";
-import Marquee from "@/components/Marquee";
-import Playground from "@/components/Playground";
-import WhatIDo from "@/components/WhatIDo";
-import Footer from "@/components/Footer";
 
 const SESSION_KEY = "pb-portfolio-loaded";
 
+/**
+ * The whole home page is the desk journey: it begins on the desk and ends on
+ * the closed laptop with the way to get in touch. Nothing sits below it.
+ */
 export default function Home() {
   const [showLoader, setShowLoader] = useState<boolean | null>(null);
   // the loader has been dismissed (or was skipped): the lamp can come on
   const [entered, setEntered] = useState(false);
   const [progress, setProgress] = useState(0);
-  // no WebGL (or the scene failed to start): fall back to the flat hero
+  // no WebGL (or the scene failed to start): fall back to a still title card
   const [fallback, setFallback] = useState(false);
 
   useEffect(() => {
@@ -47,15 +46,10 @@ export default function Home() {
     <main>
       {showLoader && <Loader progress={progress} onDone={handleDone} />}
       {fallback ? (
-        <Hero ready={entered} />
+        <Hero />
       ) : (
         <DeskJourney go={entered} onLoad={handleLoad} onUnsupported={handleUnsupported} />
       )}
-      <Marquee />
-      <GuitarShowcase />
-      <Playground />
-      <WhatIDo />
-      <Footer />
     </main>
   );
 }

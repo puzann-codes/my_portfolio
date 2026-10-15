@@ -9,7 +9,8 @@ import {
   type SketchProgress,
 } from "./textures";
 import { posterDefs } from "./posters";
-import { buildMonstera, buildPothos, buildSnakePlant } from "./foliage";
+import { buildMonstera, buildPothos, buildSnakePlant, type Plant } from "./foliage";
+import { loadPlantModel } from "./plantModels";
 import {
   buildCable,
   buildKeyboard,
@@ -97,6 +98,8 @@ export type Desk = {
   setHover(id: string | null): void;
   /** load the real poster images (resolves when done; stand-ins show meanwhile) */
   loadPosters(): Promise<void>;
+  /** swap in the scanned plant models (resolves when done, or when they fail to load) */
+  loadPlants(): Promise<void>;
   /**
    * The pointer as a finger: a world ray (null when it is not over the scene)
    * and its world velocity in m/s. Call every frame.
@@ -391,8 +394,8 @@ export function buildDesk(opts: {
     group.add(m);
     return m;
   };
-  const rubberHit = plantHit(0.5, 0.2, -0.38, 0.3, 0.42, "plant-monstera", "Monstera", "It leans toward the window that isn't there.");
-  const snakeHit = plantHit(0.55, 0.13, -0.1, 0.1, 0.26, "plant-snake", "Snake plant", "The one plant that forgives me.");
+  const rubberHit = plantHit(0.5, 0.2, -0.38, 0.3, 0.42, "plant-monstera", "Plant", "It leans toward the window that isn't there.");
+  const snakeHit = plantHit(0.55, 0.13, -0.1, 0.1, 0.26, "plant-snake", "Plant", "The one plant that forgives me.");
 
   // ---------- the wall: posters and prints that say who's at the desk ----------
   const WALL_Z = -0.618;
@@ -410,7 +413,7 @@ export function buildDesk(opts: {
   pothos.group.position.set(LEDGE.x + LEDGE.w / 2 - 0.08, LEDGE.y + LEDGE.t / 2, WALL_Z + 0.065);
   pothos.group.scale.setScalar(1);
   group.add(pothos.group);
-  const pothosHit = plantHit(LEDGE.x + LEDGE.w / 2 - 0.08, LEDGE.y - 0.04, WALL_Z + 0.07, 0.24, 0.34, "plant-pothos", "Pothos", "Trailing a little further every month.");
+  const pothosHit = plantHit(LEDGE.x + LEDGE.w / 2 - 0.08, LEDGE.y - 0.04, WALL_Z + 0.07, 0.24, 0.34, "plant-pothos", "Haworthia", "Small, slow, and harder to kill than the rest of them.");
 
   const frames = defs.map((d) => {
     const f = buildFrame(kit, {
@@ -913,19 +916,46 @@ export function buildDesk(opts: {
       sheetGeo.computeVertexNormals();
     },
   };
+  // the plants in play: the procedural ones until the scanned models arrive (or for good,
+  // on low-power devices and if they fail to load)
+  let plants: Plant[] = [monstera, snake, pothos];
+  const loadPlants = async () => {
+    if (!high) return;
+    const place = (g: THREE.Group, x: number, y: number, z: number, ry: number, s: number) => {
+      g.position.set(x, y, z);
+      g.rotation.y = ry;
+      g.scale.setScalar(s);
+    };
+    try {
+      const [a, b, c] = await Promise.all([
+        loadPlantModel(kit, { url: "/models/potted_plant_02/potted_plant_02.gltf", baseY: 0.336, hitRadius: 0.04, pokeRadius: 0.13, press: 0.11 }, 1),
+        loadPlantModel(kit, { url: "/models/potted_plant_01/potted_plant_01.gltf", baseY: 0.53, hitRadius: 0.05, pokeRadius: 0.15, press: 0.13 }, 2),
+        loadPlantModel(kit, { url: "/models/potted_plant_04/potted_plant_04.gltf", baseY: 0.155, hitRadius: 0.02, pokeRadius: 0.05, press: 0.035 }, 3),
+      ]);
+      place(a.group, 0.42, 0, -0.4, 0.6, 0.42);
+      place(b.group, 0.6, 0, -0.1, -0.4, 0.3);
+      place(c.group, LEDGE.x + LEDGE.w / 2 - 0.08, LEDGE.y + LEDGE.t / 2, WALL_Z + 0.07, 0.3, 0.62);
+      for (const old of [monstera, snake, pothos]) {
+        group.remove(old.group);
+      }
+      group.add(a.group, b.group, c.group);
+      kit.addContact(a.group, 0.5, 0.5, { alpha: 0.6 });
+      kit.addContact(b.group, 0.4, 0.4, { alpha: 0.6 });
+      plants = [a, b, c];
+      airReady = false;
+    } catch (err) {
+      console.warn("plant models failed to load; keeping the procedural plants", err);
+    }
+  };
   let airReady = false;
   const _o = new THREE.Vector3();
   const touch = (ray: { origin: THREE.Vector3; dir: THREE.Vector3 } | null, velocity: THREE.Vector3) => {
     if (!airReady) {
       group.updateMatrixWorld(true);
-      monstera.refresh();
-      snake.refresh();
-      pothos.refresh();
+      for (const p of plants) p.refresh();
       airReady = true;
     }
-    monstera.touch(ray, velocity);
-    snake.touch(ray, velocity);
-    pothos.touch(ray, velocity);
+    for (const p of plants) p.touch(ray, velocity);
     if (!ray) return;
     // the loose sheet: its far corner lifts when the finger passes over it quickly
     sheetCorner.set(SHEET.w / 2, 0.01, -SHEET.d / 2);
@@ -945,10 +975,8 @@ export function buildDesk(opts: {
     sigMat.uniforms.uT.value = t;
     cup.update(t, viewScale);
     notebook.update(t);
-    monstera.update(t, dt);
+    for (const p of plants) p.update(t, dt);
     sheet.update(dt);
-    snake.update(t, dt);
-    pothos.update(t, dt);
 
     scr.t = t;
     if (scr.typing) {
@@ -1018,12 +1046,17 @@ export function buildDesk(opts: {
       hoverId = id;
     },
     loadPosters,
+    loadPlants,
     touch,
     foliage() {
-      const a = monstera.state();
-      const b = snake.state();
-      const c = pothos.state();
-      return { touching: a.touching || b.touching || c.touching, rustle: Math.max(a.rustle, b.rustle, c.rustle) };
+      let touching = false;
+      let rustle = 0;
+      for (const p of plants) {
+        const st = p.state();
+        touching = touching || st.touching;
+        rustle = Math.max(rustle, st.rustle);
+      }
+      return { touching, rustle };
     },
     startTyping() {
       scr.typing = true;

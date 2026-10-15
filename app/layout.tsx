@@ -1,15 +1,8 @@
 import type { Metadata } from "next";
-import { Archivo, Caveat, Inter, Sorts_Mill_Goudy, Unbounded } from "next/font/google";
+import { Caveat, Sorts_Mill_Goudy, Unbounded } from "next/font/google";
 import "./globals.css";
 import SmoothScroll from "@/components/SmoothScroll";
 import AirCursor from "@/components/AirCursor";
-
-const archivo = Archivo({
-  variable: "--font-archivo",
-  subsets: ["latin"],
-  weight: ["500", "600", "700", "800", "900"],
-  display: "swap",
-});
 
 const unbounded = Unbounded({
   variable: "--font-unbounded",
@@ -22,13 +15,6 @@ const caveat = Caveat({
   variable: "--font-hand",
   subsets: ["latin"],
   weight: ["400", "600"],
-  display: "swap",
-});
-
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
   display: "swap",
 });
 
@@ -56,10 +42,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${archivo.variable} ${unbounded.variable} ${inter.variable} ${caveat.variable} ${film.variable}`}
+      className={`${unbounded.variable} ${caveat.variable} ${film.variable}`}
     >
       <body className="min-h-full flex flex-col bg-[var(--background)] text-[var(--foreground)]">
-        <div className="grain" aria-hidden="true" />
         <AirCursor />
         <SmoothScroll>{children}</SmoothScroll>
       </body>

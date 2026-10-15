@@ -33,8 +33,8 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section aria-labelledby={id} className="grid md:grid-cols-[1fr_2fr] gap-4 md:gap-16 border-t border-black/15 py-10 md:py-14">
-      <h2 id={id} className="font-display text-xs tracking-[0.25em] uppercase opacity-60">
+    <section aria-labelledby={id} className="grid md:grid-cols-[1fr_2fr] gap-4 md:gap-16 border-t border-[#efe8d6]/15 py-10 md:py-14">
+      <h2 id={id} className="text-xs tracking-[0.3em] uppercase opacity-60">
         {title}
       </h2>
       <div className="max-w-2xl text-base md:text-lg leading-relaxed">{children}</div>
@@ -62,7 +62,7 @@ export default async function ProjectPage({
     <main className="relative min-h-screen px-6 md:px-10">
       <Nav />
       <div className="max-w-[1400px] mx-auto pt-32 md:pt-40 pb-10">
-        <nav aria-label="Breadcrumb" className="flex flex-wrap gap-x-6 gap-y-2 mb-6 font-display text-xs tracking-[0.25em] uppercase">
+        <nav aria-label="Breadcrumb" className="flex flex-wrap gap-x-6 gap-y-2 mb-6 text-xs tracking-[0.3em] uppercase">
           <Link href="/work" data-cursor-hover className="wiggle opacity-60 hover:opacity-100">
             ← All projects
           </Link>
@@ -72,38 +72,38 @@ export default async function ProjectPage({
         </nav>
 
         <header className="mb-12 md:mb-16">
-          <h1 className="font-display font-black text-[13vw] md:text-[7vw] leading-[0.92] tracking-tight mb-8">
+          <h1 className="uppercase tracking-[0.1em] text-[#f3ecda] text-[10vw] md:text-[5.4vw] leading-[1.06] mb-8">
             {project.title}
           </h1>
           <div className="grid md:grid-cols-[1fr_2fr] gap-8 md:gap-16">
             <dl className="text-sm space-y-5">
               <div>
-                <dt className="text-xs tracking-widest uppercase opacity-50 mb-1">Category</dt>
+                <dt className="text-xs tracking-[0.25em] uppercase opacity-50 mb-1">Category</dt>
                 <dd>{project.category}</dd>
               </div>
               {project.year && (
                 <div>
-                  <dt className="text-xs tracking-widest uppercase opacity-50 mb-1">Year</dt>
+                  <dt className="text-xs tracking-[0.25em] uppercase opacity-50 mb-1">Year</dt>
                   <dd>{project.year}</dd>
                 </div>
               )}
               <div>
-                <dt className="text-xs tracking-widest uppercase opacity-50 mb-2">Tags</dt>
+                <dt className="text-xs tracking-[0.25em] uppercase opacity-50 mb-2">Tags</dt>
                 <dd className="flex flex-wrap gap-2">
                   {project.tags.map((t) => (
-                    <span key={t} className="text-[11px] px-2.5 py-1 rounded-full border border-black/15">
+                    <span key={t} className="text-[11px] px-2.5 py-1 rounded-full border border-[#efe8d6]/15">
                       {t}
                     </span>
                   ))}
                 </dd>
               </div>
             </dl>
-            <p className="max-w-xl text-lg md:text-2xl leading-snug">{project.summary}</p>
+            <p className="max-w-xl text-xl md:text-2xl italic leading-snug text-[#efe8d6]/90">{project.summary}</p>
           </div>
         </header>
 
         {project.flow && (
-          <div className="mb-12 md:mb-16 rounded-3xl border border-black/10 bg-[#f4f2ea] p-6 md:p-10">
+          <div className="mb-12 md:mb-16 rounded-3xl border border-[#efe8d6]/10 bg-[#efe8d6]/[0.04] p-6 md:p-10">
             <ProjectDiagram flow={project.flow} title={project.title} />
           </div>
         )}
@@ -141,7 +141,7 @@ export default async function ProjectPage({
           <Section id="stack" title="Technologies">
             <ul className="flex flex-wrap gap-2">
               {stack.map((t) => (
-                <li key={t} className="text-sm px-3 py-1 rounded-full border border-black/20">
+                <li key={t} className="text-sm px-3 py-1 rounded-full border border-[#efe8d6]/25">
                   {t}
                 </li>
               ))}
@@ -168,7 +168,7 @@ export default async function ProjectPage({
               {cs.media.map((m) => (
                 <figure key={m.src}>
                   {/* eslint-disable-next-line @next/next/no-img-element -- plain img: sizes vary per asset */}
-                  <img src={m.src} alt={m.alt} className="w-full rounded-xl border border-black/10" />
+                  <img src={m.src} alt={m.alt} className="w-full rounded-xl border border-[#efe8d6]/10" />
                   {m.caption && <figcaption className="mt-2 text-sm opacity-60">{m.caption}</figcaption>}
                 </figure>
               ))}
@@ -211,9 +211,9 @@ export default async function ProjectPage({
         )}
 
         {!complete && (
-          <div className="border-t border-black/15 py-10 md:py-14">
-            <div className="max-w-2xl rounded-2xl border border-dashed border-black/25 p-6 md:p-8">
-              <p className="font-display text-xs tracking-[0.25em] uppercase opacity-60 mb-3">
+          <div className="border-t border-[#efe8d6]/15 py-10 md:py-14">
+            <div className="max-w-2xl rounded-2xl border border-dashed border-[#efe8d6]/25 p-6 md:p-8">
+              <p className="text-xs tracking-[0.3em] uppercase opacity-60 mb-3">
                 In progress
               </p>
               <p className="text-sm md:text-base leading-relaxed opacity-75">
@@ -223,12 +223,12 @@ export default async function ProjectPage({
           </div>
         )}
 
-        <div className="flex items-center justify-between gap-6 border-t border-black/15 pt-8 pb-20">
+        <div className="flex items-center justify-between gap-6 border-t border-[#efe8d6]/15 pt-8 pb-20">
           <Link href={`/work/${prev.slug}`} data-cursor-hover data-cursor-label="PREVIOUS" className="wiggle text-sm">
             ← {prev.title}
           </Link>
           <Link href="/" className="pill-btn" data-cursor-hover>
-            Back to the desk
+            The desk
           </Link>
           <Link href={`/work/${next.slug}`} data-cursor-hover data-cursor-label="NEXT" className="wiggle text-sm">
             {next.title} →

@@ -8,3 +8,6 @@ export const P_CROSS = D_CROSS * K;
 export const STAGES_N = 6; // five projects, then the terminal backdrop
 export const STAGE_SPAN = 0.62 / STAGES_N;
 export const stageStart = (i: number) => P_CROSS + i * STAGE_SPAN;
+
+/** progress at which each project's act is at rest, in the order of the journey */
+export const PROJECT_MARKS: number[] = Array.from({ length: 5 }, (_, i) => stageStart(i) + 0.036);

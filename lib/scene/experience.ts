@@ -246,7 +246,7 @@ export async function createExperience(opts: ExperienceOptions): Promise<Experie
   desk.setEnvironment(studioTex);
   deskScene.add(desk.group);
   // real posters stream in; stand-in title cards hang until they arrive
-  const postersLoaded = desk.loadPosters();
+  const postersLoaded = Promise.all([desk.loadPosters(), desk.loadPlants()]);
   report(0.2, "keys");
   await nextFrame();
 

@@ -9,6 +9,7 @@ import { guitarSynth } from "@/lib/audio";
 import { sfx } from "@/lib/sfx";
 import { useLenis } from "@/lib/lenis-context";
 import { prefersReducedMotion } from "@/lib/motion";
+import { PROJECT_MARKS } from "@/lib/journey";
 import type { Experience } from "@/lib/scene/experience";
 import { TOP_PROJECTS } from "@/data/projects";
 import ActStage, { type Card } from "@/components/ActStage";
@@ -166,13 +167,8 @@ export default function DeskJourney({ go, onLoad, onUnsupported }: Props) {
     else window.scrollTo({ top: y });
   }, []);
 
-  const skipIntro = useCallback(() => {
-    const target = document.getElementById("top-works");
-    if (!target) return;
-    const l = lenisRef.current;
-    if (l) l.scrollTo(target, { duration: 1.2 });
-    else target.scrollIntoView();
-  }, []);
+  // "skip" goes straight to the first project's act
+  const skipIntro = useCallback(() => jumpTo(PROJECT_MARKS[0]), [jumpTo]);
 
   useEffect(() => {
     const host = canvasHostRef.current;
@@ -417,9 +413,9 @@ export default function DeskJourney({ go, onLoad, onUnsupported }: Props) {
           type="button"
           onClick={skipIntro}
           data-cursor-label="SKIP"
-          className="absolute right-6 md:right-10 top-20 md:top-24 text-[11px] md:text-xs tracking-[0.2em] uppercase text-white/70 hover:text-white border border-white/25 hover:border-white/70 rounded-full px-4 py-2 transition-colors"
+          className="absolute right-6 md:right-10 top-6 md:top-8 text-[11px] md:text-xs tracking-[0.3em] uppercase text-[#efe8d6]/70 hover:text-[#efe8d6] border border-[#efe8d6]/30 hover:border-[#efe8d6]/80 px-4 py-2 transition-colors"
         >
-          Skip the intro ↓
+          Skip to the work →
         </button>
 
         {/* act navigation */}
@@ -485,7 +481,7 @@ export default function DeskJourney({ go, onLoad, onUnsupported }: Props) {
             tip ? "opacity-100" : "opacity-0"
           }`}
         >
-          <div className="rounded-md bg-[#0d0e11]/90 text-white border border-white/20 px-3 py-1.5 text-[11px] font-semibold tracking-wide whitespace-nowrap">
+          <div className="bg-[#0a0a0b]/90 text-[#efe8d6] border border-[#efe8d6]/25 px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] whitespace-nowrap">
             {tip?.title}
           </div>
         </div>

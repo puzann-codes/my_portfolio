@@ -16,8 +16,8 @@ export default function ProjectDiagram({ flow, title }: { flow: Flow; title: str
       >
         {flow.steps.map((s, i) => (
           <li key={s} className="relative flex md:flex-col items-start gap-3 md:gap-4 md:pr-4">
-            <span className="font-display text-[11px] tracking-[0.2em] opacity-50 md:mb-0 shrink-0">{String(i + 1).padStart(2, "0")}</span>
-            <span className="hidden md:block absolute left-9 right-0 top-[7px] h-px bg-black/25" aria-hidden="true" />
+            <span className="text-[11px] tracking-[0.25em] opacity-55 md:mb-0 shrink-0">{String(i + 1).padStart(2, "0")}</span>
+            <span className="hidden md:block absolute left-9 right-0 top-[7px] h-px bg-[#efe8d6]/25" aria-hidden="true" />
             <span className="relative text-sm md:text-[15px] leading-snug">{s}</span>
           </li>
         ))}

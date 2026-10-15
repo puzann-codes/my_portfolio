@@ -7,17 +7,17 @@ import { guitarSynth } from "@/lib/audio";
 
 // Boot log. Each line appears when the (real) load progress passes its mark.
 const LOG = [
-  "mount /fonts",
-  "light the lamp",
-  "tune 84 keycaps",
-  "hang the prints, water the plants",
-  "brew the coffee",
-  "sketch the ideas",
-  "route the complaints",
-  "seal the capsule",
-  "follow the spring",
-  "compile shaders",
-  "all systems nominal",
+  "lighting the lamp",
+  "setting the keys",
+  "hanging the prints",
+  "watering the plants",
+  "brewing the coffee",
+  "sketching the ideas",
+  "routing the complaints",
+  "sealing the capsule",
+  "following the spring",
+  "threading the film",
+  "rolling",
 ];
 
 const MIN_MS = 2800; // long enough to read, even when everything is cached
@@ -113,14 +113,14 @@ export default function Loader({
   return (
     <div
       ref={rootRef}
-      className="fixed inset-0 z-[100] bg-[#050505] text-white font-mono overflow-hidden"
+      className="fixed inset-0 z-[100] bg-[#0a0a0b] text-[#efe8d6] overflow-hidden"
     >
-      <div className="absolute top-6 md:top-8 left-6 md:left-10 right-6 md:right-10 flex items-center justify-between text-[11px] md:text-xs tracking-widest uppercase text-white/55">
-        <span>PB — portfolio.os</span>
-        <span>build 2026.10</span>
+      <div className="absolute top-6 md:top-8 left-6 md:left-10 right-6 md:right-10 flex items-center justify-between text-[0.7rem] md:text-xs tracking-[0.34em] uppercase text-[#efe8d6]/60">
+        <span>Pujan Bhatt</span>
+        <span>A portfolio in six acts</span>
       </div>
 
-      <ul className="absolute left-6 md:left-10 top-24 md:top-28 text-[11px] md:text-[13px] leading-[1.9] text-white/70">
+      <ul className="absolute left-6 md:left-10 top-24 md:top-28 text-[0.95rem] md:text-base italic leading-[1.9] text-[#efe8d6]/75">
         {LOG.map((line, i) => (
           <li
             key={line}
@@ -129,40 +129,33 @@ export default function Loader({
             }}
             className="boot-line"
           >
-            <span className="text-white/40">[</span>
-            <span className="text-white"> ok </span>
-            <span className="text-white/40">]</span> {line}
+            {line}
           </li>
         ))}
       </ul>
 
       <div className="absolute left-6 md:left-10 bottom-8 md:bottom-12 flex items-end gap-2 leading-none">
-        <span
-          ref={numRef}
-          className="font-hero font-black text-[30vw] md:text-[15vw] tabular-nums tracking-tight"
-        >
+        <span ref={numRef} className="text-[28vw] md:text-[14vw] tabular-nums tracking-[0.04em]">
           00
         </span>
-        <span className="font-hero font-black text-[8vw] md:text-[3.4vw] pb-[3vw] md:pb-[1.4vw] text-white/60">
-          %
-        </span>
+        <span className="text-[7vw] md:text-[3vw] pb-[3vw] md:pb-[1.4vw] text-[#efe8d6]/55">%</span>
       </div>
 
       <div
         ref={choiceRef}
-        className={`absolute right-6 md:right-10 bottom-10 md:bottom-14 flex flex-col items-end gap-4 ${
+        className={`absolute right-6 md:right-10 bottom-10 md:bottom-14 flex flex-col items-end gap-5 ${
           ready ? "" : "pointer-events-none"
         }`}
       >
-        <p className="text-[12px] md:text-sm text-white/70">
-          pujan@desk:~$ ./enter <span className="boot-caret">▌</span>
+        <p className="text-sm md:text-base italic text-[#efe8d6]/70">
+          The house lights are down. <span className="boot-caret">&#9612;</span>
         </p>
-        <div className="flex flex-wrap items-center justify-end gap-3 font-sans">
+        <div className="flex flex-wrap items-center justify-end gap-3">
           <button
             type="button"
             data-cursor-hover
             onClick={withSound}
-            className="rounded-full bg-white text-black px-6 py-3 text-sm font-semibold tracking-wide transition-transform duration-300 hover:scale-105"
+            className="border border-[#efe8d6] bg-[#efe8d6] px-7 py-3 text-xs uppercase tracking-[0.3em] text-[#0a0a0b] transition-colors duration-300 hover:bg-transparent hover:text-[#efe8d6]"
           >
             Enter with sound
           </button>
@@ -170,7 +163,7 @@ export default function Loader({
             type="button"
             data-cursor-hover
             onClick={withoutSound}
-            className="rounded-full border border-white/30 px-6 py-3 text-sm tracking-wide text-white/80 transition-colors duration-300 hover:border-white hover:text-white"
+            className="border border-[#efe8d6]/40 px-7 py-3 text-xs uppercase tracking-[0.3em] text-[#efe8d6]/85 transition-colors duration-300 hover:border-[#efe8d6] hover:text-[#efe8d6]"
           >
             Enter without
           </button>
@@ -179,7 +172,7 @@ export default function Loader({
 
       <div
         ref={barRef}
-        className="absolute bottom-0 left-0 h-[3px] w-full bg-white origin-left"
+        className="absolute bottom-0 left-0 h-px w-full bg-[#efe8d6] origin-left"
         style={{ transform: "scaleX(0)" }}
       />
     </div>

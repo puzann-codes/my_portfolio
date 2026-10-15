@@ -1,11 +1,18 @@
 @import "tailwindcss";
 
+/*
+ * One theme for the whole site: the dark room of the desk journey. A near-black
+ * ground, warm paper-cream type set in an old-style Goudy, hairlines instead of
+ * boxes. Nothing here is white-on-black "terminal" any more.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #0a0a0a;
-  --font-display: var(--font-archivo);
-  --font-hero: var(--font-unbounded);
-  --font-body: var(--font-inter);
+  --background: #0a0a0b;
+  --foreground: #efe8d6;
+  --muted: rgba(239, 232, 214, 0.62);
+  --line: rgba(239, 232, 214, 0.16);
+  --font-display: var(--font-film);
+  --font-hero: var(--font-film);
+  --font-body: var(--font-film);
 }
 
 @theme inline {
@@ -22,6 +29,7 @@
 
 html {
   background: var(--background);
+  color-scheme: dark;
   scroll-behavior: auto;
 }
 
@@ -40,113 +48,82 @@ html.lenis {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-body);
+  font-family: var(--font-body), Georgia, "Times New Roman", serif;
+  font-size: 1.05rem;
   overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
 }
 
-.font-display {
-  font-family: var(--font-display);
-}
-
+.font-display,
 .font-hero {
-  font-family: var(--font-hero);
+  font-family: var(--font-film), Georgia, "Times New Roman", serif;
+  font-weight: 400;
 }
 
-/* ---------- hero name: char reveal + shimmer sweep ---------- */
-/* Per-char perspective is applied via GSAP's transformPerspective instead
- * of a `perspective` on the heading, scoped to each .hero-char. */
-.hero-char {
-  display: inline-block;
-  transform-origin: 50% 100%;
-  will-change: transform, filter, opacity;
-}
-
-.hero-shimmer {
-  background-image: linear-gradient(
-    100deg,
-    transparent 44%,
-    rgba(255, 255, 255, 0.95) 50%,
-    transparent 56%
-  );
-  background-size: 300% 100%;
-  background-position: 200% 0;
-  background-repeat: no-repeat;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  mix-blend-mode: screen;
-}
-
-.hero-shimmer.is-active {
-  animation: shimmer-sweep 4.2s ease-in-out infinite;
-  animation-delay: 1s;
-}
-
-@keyframes shimmer-sweep {
-  0%, 12% { background-position: 200% 0; }
-  55%, 100% { background-position: -100% 0; }
+/* the one weight this face has: never let the browser fake a bold */
+h1, h2, h3, h4, strong, b, dt {
+  font-weight: 400;
 }
 
 ::selection {
-  background: #0a0a0a;
-  color: #fff;
+  background: #efe8d6;
+  color: #0a0a0b;
 }
 
-/* ---------- shared utility ---------- */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
 
 .hairline {
   height: 1px;
-  background: currentColor;
-  opacity: 0.15;
+  background: var(--line);
 }
 
-.reveal-mask {
-  overflow: hidden;
-}
-
+/* ---------- a quiet outlined button ---------- */
 .pill-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.6em;
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  padding: 0.9em 1.4em;
-  font-size: 0.85rem;
-  letter-spacing: 0.02em;
-  font-weight: 600;
-  transition: background-color 0.45s cubic-bezier(0.16, 1, 0.3, 1), color 0.45s cubic-bezier(0.16, 1, 0.3, 1);
-  background: transparent;
+  gap: 0.8em;
+  border: 1px solid rgba(239, 232, 214, 0.45);
+  border-radius: 0;
+  padding: 0.95em 1.6em;
+  font-size: 0.78rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
   color: var(--foreground);
+  background: transparent;
+  transition: background-color 0.5s cubic-bezier(0.16, 1, 0.3, 1), color 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.5s ease;
 }
 
-.pill-btn:hover {
+.pill-btn:hover,
+.pill-btn:focus-visible {
   background: var(--foreground);
+  border-color: var(--foreground);
   color: var(--background);
 }
 
-/* Used where the surrounding section has switched to a dark background
- * (e.g. once the guitar's ink has fully spread) so the pill stays
- * legible: light border/text at rest, inverts to solid white on hover.
- * Compound selector (higher specificity than plain .pill-btn) so it
- * reliably wins regardless of stylesheet ordering. */
 .pill-btn.pill-btn-dark {
-  color: #fff;
-  border-color: #fff;
+  color: var(--foreground);
+  border-color: rgba(239, 232, 214, 0.45);
 }
 
-.pill-btn.pill-btn-dark:hover {
-  background: #fff;
-  color: #0a0a0a;
+/* ---------- links ---------- */
+.wiggle {
+  border-bottom: 1px solid rgba(239, 232, 214, 0.3);
+  padding-bottom: 2px;
+  transition: border-color 0.3s ease, color 0.3s ease;
+}
+
+.wiggle:hover {
+  border-bottom-color: var(--foreground);
 }
 
 /* ---------- boot loader ---------- */
 .boot-line {
   opacity: 0;
   transform: translateX(-8px);
-  transition: opacity 0.35s ease, transform 0.35s ease;
+  transition: opacity 0.5s ease, transform 0.5s ease;
 }
 
 .boot-line.is-on {
@@ -175,70 +152,14 @@ body {
   100% { transform: scaleY(0); transform-origin: bottom; }
 }
 
-/* ---------- Inky the mascot ---------- */
-.inky-body {
-  animation: inky-morph 6s ease-in-out infinite;
-}
-
-.inky-eye {
-  border-radius: 50%;
-  animation: inky-blink 5s infinite;
-  transform-origin: 50% 60%;
-}
-
-@keyframes inky-morph {
-  0%, 100% { border-radius: 58% 42% 52% 48% / 52% 56% 44% 48%; }
-  33% { border-radius: 46% 54% 44% 56% / 58% 44% 56% 42%; }
-  66% { border-radius: 52% 48% 58% 42% / 44% 52% 48% 56%; }
-}
-
-@keyframes inky-blink {
-  0%, 93%, 100% { transform: scaleY(1); }
-  96% { transform: scaleY(0.08); }
-}
-
-/* ---------- marquee ---------- */
-.marquee-outline {
-  color: transparent;
-  -webkit-text-stroke: 1.5px #0a0a0a;
-}
-
-/* ---------- wiggly link underline ---------- */
-.wiggle {
-  text-decoration: underline wavy transparent;
-  text-underline-offset: 5px;
-  transition: text-decoration-color 0.3s ease;
-}
-
-.wiggle:hover {
-  text-decoration-color: currentColor;
-}
-
 @keyframes fadein {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes grain {
-  0%, 100% { transform: translate(0, 0); }
-  10% { transform: translate(-2%, -4%); }
-  20% { transform: translate(-6%, 2%); }
-  30% { transform: translate(4%, -8%); }
-  40% { transform: translate(-6%, 6%); }
-  50% { transform: translate(-2%, 4%); }
-  60% { transform: translate(8%, 0%); }
-  70% { transform: translate(0%, 8%); }
-  80% { transform: translate(-4%, -2%); }
-  90% { transform: translate(4%, 6%); }
-}
-
-.grain {
-  position: fixed;
-  inset: -100px;
-  pointer-events: none;
-  z-index: 40;
-  opacity: 0.035;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  animation: grain 1s steps(2) infinite;
-  mix-blend-mode: multiply;
+@media (prefers-reduced-motion: reduce) {
+  .scroll-line,
+  .boot-caret {
+    animation: none;
+  }
 }
