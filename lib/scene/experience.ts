@@ -49,7 +49,10 @@ export type ExperienceOptions = {
   onVeil: (opacity: number) => void;
   onHover: (info: HoverInfo | null) => void;
   onLampOn: () => void;
-  onKeyTick: () => void;
+  /** a key goes down or comes up in the choreography */
+  onKey?: (code: string, down: boolean) => void;
+  /** the on-screen pointer clicks */
+  onClick?: () => void;
   /** ask the browser for the plainest context (a retry after a failed start) */
   simpleContext?: boolean;
   /** the finger is on foliage; rustle is 0..1 */
@@ -81,7 +84,7 @@ const P_BACK = 0.905; // machine → desk swap
 
 /** Where the interesting moments sit on the scroll, for jump links. */
 export const MARKS = {
-  keyboard: 0.09,
+  keyboard: 0.1,
   notebook: 0.196,
   enter: 0.255,
   projects: 0.28,
@@ -96,9 +99,12 @@ const v3 = (a: [number, number, number]) => new THREE.Vector3(a[0], a[1], a[2]);
 // ---- desk path: wide → keyboard → cup → notebook (then the screen). Desk-domain p. ----
 const DESK_KEYS: Key[] = [
   { p: 0.0, pos: [0.26, 0.55, 1.46], look: [0.02, 0.27, -0.3], fov: 38 },
-  { p: 0.055, pos: [0.26, 0.55, 1.46], look: [0.02, 0.27, -0.3], fov: 38 },
-  { p: 0.12, pos: [0.06, 0.34, 0.62], look: [0.02, 0.06, -0.06], fov: 40 },
-  { p: 0.165, pos: [0.1, 0.31, 0.56], look: [0.04, 0.05, -0.06], fov: 38 },
+  { p: 0.045, pos: [0.26, 0.55, 1.46], look: [0.02, 0.27, -0.3], fov: 38 },
+  // the mouse nudges and the pointer crosses the screen to the code
+  { p: 0.085, pos: [0.2, 0.37, 0.78], look: [0.1, 0.14, -0.22], fov: 36 },
+  // then the keyboard, from above, as the name is typed
+  { p: 0.125, pos: [0.0, 0.54, 0.1], look: [0.0, 0.0, -0.045], fov: 34 },
+  { p: 0.172, pos: [0.0, 0.5, 0.11], look: [0.0, 0.0, -0.045], fov: 34 },
   { p: 0.195, pos: [-0.06, 0.26, 0.34], look: [-0.3, 0.07, -0.34], fov: 34 },
   { p: 0.222, pos: [-0.12, 0.22, 0.2], look: [-0.31, 0.06, -0.35], fov: 33 },
   { p: 0.258, pos: [-0.38, 0.52, 0.28], look: [-0.4, 0.01, -0.02], fov: 36 },
@@ -160,7 +166,7 @@ const WORLD_KEYS: Key[] = STAGE_KEYS.flatMap(([name, a, b, c], i) => {
 // caption stages: 0 workspace · 1 input · 2 pause · 3 idea · 4–9 the six projects · 10 terminal · 11 beyond
 const STAGE_AT = [
   0,
-  0.06 * K,
+  0.05 * K,
   0.18 * K,
   0.225 * K,
   ...Array.from({ length: STAGES_N }, (_, i) => stageStart(i) - 0.004),
@@ -168,10 +174,10 @@ const STAGE_AT = [
 ];
 
 // the keyboard's choreography (desk-domain p)
-const KEY_SEQ = ["KeyC", "KeyO", "KeyD", "KeyE", "Enter"];
-const KEY_T0 = 0.092;
-const KEY_DT = 0.0135;
-const KEY_HOLD = 0.0085;
+const KEY_SEQ = ["KeyP", "KeyU", "KeyJ", "KeyA", "KeyN"];
+const KEY_T0 = 0.122;
+const KEY_DT = 0.0102;
+const KEY_HOLD = 0.0068;
 
 const win = (p: number, a: number, b: number, c: number, d: number) =>
   smoothstep(a, b, p) * (1 - smoothstep(c, d, p));
@@ -300,6 +306,7 @@ export async function createExperience(opts: ExperienceOptions): Promise<Experie
     held: [],
     typed: "",
     mouse: 0,
+    screen: 0,
     notebookOpen: 0,
     sketch: { note: 0, s1: 0, s2: 0, s3: 0 },
     nodes: 0,
@@ -472,12 +479,16 @@ export async function createExperience(opts: ExperienceOptions): Promise<Experie
     for (let i = 0; i < KEY_SEQ.length; i++) {
       const s = KEY_T0 + i * KEY_DT;
       if (p >= s && p < s + KEY_HOLD) heldNow.push(KEY_SEQ[i]);
-      if (p >= s && i < 4) typedN = i + 1;
+      if (p >= s) typedN = i + 1;
     }
     state.held = heldNow;
-    state.typed = "code".slice(0, typedN);
-    state.keyWave = p > 0.07 && p < 0.148 ? (p - 0.07) / 0.078 : -1;
-    state.mouse = easeInOut(clamp((p - 0.105) / 0.06));
+    state.typed = "pujan".slice(0, typedN);
+    state.keyWave = -1;
+    // the mouse nudges a few centimetres; the pointer crosses to the code icon and clicks
+    state.mouse = easeInOut(clamp((p - 0.052) / 0.036));
+    const screenWas = state.screen;
+    state.screen = easeInOut(clamp((p - 0.093) / 0.02));
+    if (screenWas < 0.5 && state.screen >= 0.5 && cur > prevCur) opts.onClick?.();
     state.notebookOpen = easeInOut(clamp((p - 0.222) / 0.03));
     state.sketch.note = clamp((p - 0.238) / 0.02);
     state.sketch.s1 = clamp((p - 0.254) / 0.02);
@@ -485,7 +496,7 @@ export async function createExperience(opts: ExperienceOptions): Promise<Experie
     state.sketch.s3 = clamp((p - 0.294) / 0.02);
     state.nodes = smoothstep(0.298, 0.32, p) * (1 - smoothstep(0.345, 0.358, p));
     state.signal = p < 0.36 ? clamp((p - 0.318) / 0.036) : 0;
-    state.focus.keyboard = win(p, 0.065, 0.1, 0.16, 0.19);
+    state.focus.keyboard = win(p, 0.1, 0.122, 0.172, 0.19);
     state.focus.cup = win(p, 0.165, 0.19, 0.22, 0.236);
     state.focus.notebook = win(p, 0.215, 0.24, 0.33, 0.356);
     const pause = win(p, 0.17, 0.195, 0.225, 0.245);
@@ -493,10 +504,14 @@ export async function createExperience(opts: ExperienceOptions): Promise<Experie
     desk.setState(state);
     renderer.toneMappingExposure = 1.05 - 0.1 * state.focus.cup;
 
-    // a soft key sound for each new press (only when scrolling forward)
+    // each key's sound as it goes down and comes up (only when scrolling forward)
     const sig = heldNow.join(",");
     if (sig !== prevHeld) {
-      if (sig && cur > prevCur) opts.onKeyTick();
+      if (cur > prevCur) {
+        const was = prevHeld ? prevHeld.split(",") : [];
+        for (const k of heldNow) if (!was.includes(k)) opts.onKey?.(k, true);
+        for (const k of was) if (!heldNow.includes(k)) opts.onKey?.(k, false);
+      }
       prevHeld = sig;
     }
   };

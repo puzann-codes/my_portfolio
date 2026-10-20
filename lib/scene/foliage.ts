@@ -1,13 +1,12 @@
 import * as THREE from "three";
 import { clamp, rng } from "./util";
 import type { Kit } from "./props";
+import type { LeafLibrary } from "./leafLibrary";
 
 /* ============================== textures ============================== */
 
 export type LeafTex = { map: THREE.CanvasTexture; bump: THREE.CanvasTexture };
-let monsteraTex: LeafTex | null = null;
 let heartTex: LeafTex | null = null;
-let bladeTex: LeafTex | null = null;
 
 function leafCanvas(w: number, h: number) {
   const c = document.createElement("canvas");
@@ -51,140 +50,6 @@ function blotches(
     ctx.ellipse(x, y, r, r * (0.6 + R() * 0.6), R() * Math.PI, 0, Math.PI * 2);
     ctx.fill();
   }
-}
-
-/** a Monstera blade: cordate outline, deep splits toward the midrib, holes, impressed veins */
-export function monsteraTexture(): LeafTex {
-  if (monsteraTex) return monsteraTex;
-  const W = 640;
-  const H = 800;
-  const c = leafCanvas(W, H);
-  const ctx = c.getContext("2d")!;
-  const bc = leafCanvas(W, H);
-  const bx = bc.getContext("2d")!;
-  const halfW = (v: number) => {
-    // v: 0 base → 1 tip. Rounded lobes at the base, long tapering tip.
-    const body = Math.pow(Math.sin(Math.PI * Math.pow(v, 0.62)), 0.85);
-    const lobe = 0.12 * Math.exp(-Math.pow((v - 0.08) / 0.07, 2));
-    return (body + lobe) * 0.46;
-  };
-  const notch = (v: number) => {
-    if (v < 0.24 || v > 0.9) return 0;
-    const s = Math.max(0, Math.sin(v * Math.PI * 6.2 + 0.4));
-    return Math.pow(s, 5) * 0.8 * Math.min(1, (v - 0.24) / 0.1);
-  };
-  const toPx = (u: number, v: number) => [W / 2 + u * W, H - 22 - v * (H - 44)] as const;
-  const outline = (g: CanvasRenderingContext2D) => {
-    g.beginPath();
-    const N = 220;
-    for (let i = 0; i <= N; i++) {
-      const v = i / N;
-      const w = halfW(v) * (1 - notch(v));
-      const [x, y] = toPx(w, v);
-      if (i === 0) g.moveTo(x, y);
-      else g.lineTo(x, y);
-    }
-    for (let i = N; i >= 0; i--) {
-      const v = i / N;
-      const w = halfW(v) * (1 - notch(Math.min(1, v + 0.013 * Math.sin(v * 11))));
-      const [x, y] = toPx(-w, v);
-      g.lineTo(x, y);
-    }
-    g.closePath();
-  };
-
-  // base colour: deep green, a little lighter toward the midrib and the base
-  const grad = ctx.createLinearGradient(0, H, 0, 0);
-  grad.addColorStop(0, "#2f6a3b");
-  grad.addColorStop(0.5, "#265a33");
-  grad.addColorStop(1, "#1d4a29");
-  ctx.fillStyle = grad;
-  outline(ctx);
-  ctx.fill();
-
-  // fenestrations
-  ctx.globalCompositeOperation = "destination-out";
-  for (const v of [0.34, 0.5, 0.66]) {
-    for (const s of [-1, 1]) {
-      const [x, y] = toPx(s * halfW(v) * 0.42, v);
-      ctx.beginPath();
-      ctx.ellipse(x, y, 15, 25, s * 0.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-  ctx.globalCompositeOperation = "source-atop";
-
-  // mottling
-  blotches(ctx, W, H, 170, ["rgba(70,130,76,A)", "rgba(20,56,32,A)", "rgba(96,150,84,A)"], 18, 70, 0.08, 0.2, 11);
-  // a lighter wash down the middle and toward the base
-  const mid = ctx.createLinearGradient(W * 0.28, 0, W * 0.72, 0);
-  mid.addColorStop(0, "rgba(120,180,110,0)");
-  mid.addColorStop(0.5, "rgba(130,190,115,0.2)");
-  mid.addColorStop(1, "rgba(120,180,110,0)");
-  ctx.fillStyle = mid;
-  ctx.fillRect(0, 0, W, H);
-
-  // grey bump: mid-grey with the veins impressed
-  bx.fillStyle = "#8a8a8a";
-  bx.fillRect(0, 0, W, H);
-
-  const vein = (g: CanvasRenderingContext2D, u0: number, v0: number, ux: number, vx: number, u1: number, v1: number) => {
-    g.beginPath();
-    g.moveTo(...toPx(u0, v0));
-    g.quadraticCurveTo(...toPx(ux, vx), ...toPx(u1, v1));
-    g.stroke();
-  };
-  for (let k = 0; k < 14; k++) {
-    const v = 0.08 + k * 0.062;
-    for (const s of [-1, 1]) {
-      const reach = halfW(Math.min(0.97, v + 0.1)) * 0.92;
-      // soft groove beside the vein, then the vein itself
-      ctx.strokeStyle = "rgba(8,30,15,0.16)";
-      ctx.lineWidth = 11;
-      vein(ctx, 0, v - 0.015, s * reach * 0.45, v + 0.02, s * reach, v + 0.1);
-      ctx.strokeStyle = "rgba(196,226,160,0.5)";
-      ctx.lineWidth = 2.4;
-      vein(ctx, 0, v - 0.015, s * reach * 0.45, v + 0.02, s * reach, v + 0.1);
-      bx.strokeStyle = "#5a5a5a";
-      bx.lineWidth = 4.5;
-      vein(bx, 0, v - 0.015, s * reach * 0.45, v + 0.02, s * reach, v + 0.1);
-    }
-  }
-  // the midrib: thick at the base, fine at the tip
-  for (let i = 0; i < 40; i++) {
-    const v0 = (i / 40) * 0.97;
-    const v1 = ((i + 1) / 40) * 0.97;
-    const w = 11 * (1 - v0) + 2;
-    ctx.strokeStyle = "rgba(210,232,176,0.78)";
-    ctx.lineWidth = w;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(...toPx(0, v0));
-    ctx.lineTo(...toPx(0, v1));
-    ctx.stroke();
-    bx.strokeStyle = "#3c3c3c";
-    bx.lineWidth = w * 0.8;
-    bx.lineCap = "round";
-    bx.beginPath();
-    bx.moveTo(...toPx(0, v0));
-    bx.lineTo(...toPx(0, v1));
-    bx.stroke();
-  }
-  // a darker margin, so the edge reads as a thin edge
-  ctx.strokeStyle = "rgba(10,36,18,0.45)";
-  ctx.lineWidth = 7;
-  outline(ctx);
-  ctx.stroke();
-  // fine speckle
-  const R = rng(5);
-  for (let i = 0; i < 1400; i++) {
-    ctx.fillStyle = R() > 0.5 ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.07)";
-    ctx.fillRect(R() * W, R() * H, 1.5, 1.5);
-  }
-  blotches(bx, W, H, 90, ["rgba(170,170,170,A)", "rgba(100,100,100,A)"], 14, 50, 0.06, 0.16, 3);
-
-  monsteraTex = { map: toTex(c, true), bump: toTex(bc, false) };
-  return monsteraTex;
 }
 
 /** a pothos leaf: soft heart with a pointed tip, cream variegation, veins */
@@ -259,64 +124,6 @@ export function heartTexture(): LeafTex {
   heartTex = { map: toTex(c, true, 4), bump: toTex(bc, false, 4) };
   return heartTex;
 }
-
-/** a snake-plant blade: dark green, irregular silvery cross-banding, pale yellow margin */
-export function bladeTexture(): LeafTex {
-  if (bladeTex) return bladeTex;
-  const W = 128;
-  const H = 512;
-  const c = leafCanvas(W, H);
-  const ctx = c.getContext("2d")!;
-  const bc = leafCanvas(W, H);
-  const bx = bc.getContext("2d")!;
-  const g = ctx.createLinearGradient(0, 0, W, 0);
-  g.addColorStop(0, "#173a22");
-  g.addColorStop(0.5, "#235230");
-  g.addColorStop(1, "#173a22");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, W, H);
-  const R = rng(17);
-  // cross bands: wavy, broken, never the same twice
-  for (let y = -10; y < H; y += 14 + R() * 12) {
-    const a = 0.06 + R() * 0.12;
-    ctx.fillStyle = `rgba(158,196,150,${a})`;
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    const amp = 4 + R() * 7;
-    const ph = R() * 6;
-    for (let x = 0; x <= W; x += 8) ctx.lineTo(x, y + Math.sin(x * 0.08 + ph) * amp);
-    for (let x = W; x >= 0; x -= 8) ctx.lineTo(x, y + 4 + R() * 6 + Math.sin(x * 0.08 + ph + 0.6) * amp);
-    ctx.closePath();
-    ctx.fill();
-  }
-  blotches(ctx, W, H, 90, ["rgba(210,226,190,A)", "rgba(10,36,18,A)"], 6, 22, 0.05, 0.14, 4);
-  // long faint striations
-  for (let i = 0; i < 26; i++) {
-    ctx.strokeStyle = `rgba(190,215,170,${0.04 + R() * 0.06})`;
-    ctx.lineWidth = 1;
-    const x = R() * W;
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x + (R() - 0.5) * 6, H);
-    ctx.stroke();
-  }
-  // margin
-  const m = ctx.createLinearGradient(0, 0, W, 0);
-  m.addColorStop(0, "rgba(205,200,110,0.95)");
-  m.addColorStop(0.05, "rgba(190,196,100,0.6)");
-  m.addColorStop(0.1, "rgba(190,196,100,0)");
-  m.addColorStop(0.9, "rgba(190,196,100,0)");
-  m.addColorStop(0.95, "rgba(190,196,100,0.6)");
-  m.addColorStop(1, "rgba(205,200,110,0.95)");
-  ctx.fillStyle = m;
-  ctx.fillRect(0, 0, W, H);
-  bx.fillStyle = "#8a8a8a";
-  bx.fillRect(0, 0, W, H);
-  blotches(bx, W, H, 60, ["rgba(180,180,180,A)", "rgba(100,100,100,A)"], 6, 26, 0.06, 0.18, 6);
-  bladeTex = { map: toTex(c, true, 4), bump: toTex(bc, false, 4) };
-  return bladeTex;
-}
-
 
 function potGeometry(r: number, h: number) {
   const prof: [number, number][] = [
@@ -542,9 +349,14 @@ type LeafOpts = {
   jointK?: number;
   flexK?: number;
   flutter?: number;
+  /** which scanned leaf shape (when the plant has a leaf library) */
+  variant?: number;
 };
 
 class Leaf {
+  /** which instanced mesh and slot this leaf occupies */
+  mesh = 0;
+  slot = 0;
   pitch = 0;
   roll = 0;
   vp = 0;
@@ -663,6 +475,72 @@ function patchLeaf(mat: THREE.MeshStandardMaterial, uni: Uni) {
   mat.customProgramCacheKey = () => "foliage-leaf";
 }
 
+/** the same bend and dent, for scanned leaves normalised to length 1 along +y */
+function patchScanned(mat: THREE.MeshStandardMaterial, uni: Uni) {
+  mat.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, uni);
+    sh.vertexShader = sh.vertexShader
+      .replace(
+        "#include <common>",
+        `#include <common>
+         attribute vec4 aDyn;
+         uniform float uTime;
+         uniform vec4 uTouch;
+         uniform vec3 uTouchDir;
+         uniform float uTouchInst;
+         uniform float uTouchR;`
+      )
+      .replace(
+        "#include <beginnormal_vertex>",
+        `float bv = clamp(position.y, 0.0, 1.0);
+         float bAng = aDyn.x * bv * bv;
+         float bc = cos(bAng);
+         float bs = sin(bAng);
+         vec3 objectNormal = vec3(normal.x, normal.y * bc + normal.z * bs, -normal.y * bs + normal.z * bc);
+         #ifdef USE_TANGENT
+           vec3 objectTangent = vec3( tangent.xyz );
+         #endif`
+      )
+      .replace(
+        "#include <begin_vertex>",
+        `vec3 transformed = vec3(position.x, position.y * bc + position.z * bs, -position.y * bs + position.z * bc);
+         transformed.z += sin(uTime * 4.2 + bv * 6.0 + aDyn.w) * aDyn.z * bv * bv;
+         {
+           float tw = aDyn.y * bv * 0.6;
+           float tc = cos(tw);
+           float ts = sin(tw);
+           transformed.xz = vec2(tc * transformed.x - ts * transformed.z, ts * transformed.x + tc * transformed.z);
+         }`
+      )
+      .replace(
+        "#include <project_vertex>",
+        `vec4 worldPos = modelMatrix * instanceMatrix * vec4(transformed, 1.0);
+         if (uTouch.w > 0.001 && float(gl_InstanceID) == uTouchInst) {
+           float dd = distance(worldPos.xyz, uTouch.xyz);
+           worldPos.xyz += uTouchDir * uTouch.w * exp(-(dd * dd) / (uTouchR * uTouchR));
+         }
+         vec4 mvPosition = viewMatrix * worldPos;
+         gl_Position = projectionMatrix * mvPosition;`
+      );
+  };
+  mat.customProgramCacheKey = () => "foliage-scanned";
+}
+
+function patchScannedDepth(mat: THREE.MeshDepthMaterial, uni: Uni) {
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uTime = uni.uTime;
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", "#include <common>\nattribute vec4 aDyn;\nuniform float uTime;")
+      .replace(
+        "#include <begin_vertex>",
+        `float bv = clamp(position.y, 0.0, 1.0);
+         float bAng = aDyn.x * bv * bv;
+         vec3 transformed = vec3(position.x, position.y * cos(bAng) + position.z * sin(bAng), -position.y * sin(bAng) + position.z * cos(bAng));`
+      );
+  };
+  mat.customProgramCacheKey = () => "foliage-scanned-depth";
+}
+
 function patchDepth(mat: THREE.MeshDepthMaterial, uni: Uni) {
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = uni.uTime;
@@ -711,7 +589,9 @@ const K_STRIPS = 6;
 /* ---- the plant ---- */
 
 type FoliageOpts = {
-  tex: LeafTex;
+  tex?: LeafTex;
+  /** photo-scanned leaf shapes: when given, blades are these meshes, not the flat grid */
+  scanned?: LeafLibrary;
   maxLeaves: number;
   grid: [number, number];
   /** half-width of the blade at v, in units of its width (0..0.5), for hit-testing and taper */
@@ -734,11 +614,11 @@ class Foliage {
     uTouchInst: { value: -1 },
     uTouchR: { value: 0.03 },
   };
-  private leafMesh!: THREE.InstancedMesh;
+  private meshes: THREE.InstancedMesh[] = [];
+  private dyns: THREE.InstancedBufferAttribute[] = [];
+  private meshUni: Uni[] = [];
   private stemMesh!: THREE.InstancedMesh;
   private jointMesh!: THREE.InstancedMesh;
-  private shape!: THREE.InstancedBufferAttribute;
-  private dyn!: THREE.InstancedBufferAttribute;
   private built = false;
   private readonly inv = new THREE.Matrix4();
   private readonly invQ = new THREE.Quaternion();
@@ -774,7 +654,69 @@ class Foliage {
 
   /** after all chains and leaves have been added */
   build() {
+    const { o } = this;
+    if (o.scanned) this.buildScannedLeaves(o.scanned);
+    else this.buildGridLeaves();
+    this.buildStems();
+    this.built = true;
+    this.pose();
+  }
+
+  private buildScannedLeaves(lib: LeafLibrary) {
     const { kit, o } = this;
+    void o;
+    const byVariant = new Map<number, Leaf[]>();
+    for (const l of this.leaves) {
+      const v = ((l.o.variant ?? 0) % lib.variants.length + lib.variants.length) % lib.variants.length;
+      const list = byVariant.get(v) ?? [];
+      list.push(l);
+      byVariant.set(v, list);
+    }
+    const base = kit.track(
+      new THREE.MeshStandardMaterial({
+        color: 0x9db89a,
+        map: lib.map,
+        normalMap: lib.normal,
+        roughnessMap: lib.rough,
+        roughness: 1,
+        metalness: 0,
+        side: THREE.DoubleSide,
+        envMapIntensity: 0.9,
+      })
+    );
+    for (const [v, list] of byVariant) {
+      const geo = lib.variants[v].geo.clone();
+      kit.track(geo);
+      const dyn = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 4), 4);
+      dyn.setUsage(THREE.DynamicDrawUsage);
+      geo.setAttribute("aDyn", dyn);
+      const uni: Uni = { ...this.uni, uTouchInst: { value: -1 } };
+      const mat = kit.track(base.clone());
+      patchScanned(mat, uni);
+      const mesh = new THREE.InstancedMesh(geo, mat, list.length);
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      mesh.frustumCulled = false;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      const depth = kit.track(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking }));
+      patchScannedDepth(depth, uni);
+      mesh.customDepthMaterial = depth;
+      const mi = this.meshes.length;
+      list.forEach((l, i) => {
+        l.mesh = mi;
+        l.slot = i;
+        mesh.setColorAt(i, l.o.tint);
+      });
+      this.meshes.push(mesh);
+      this.dyns.push(dyn);
+      this.meshUni.push(uni);
+      this.group.add(mesh);
+    }
+  }
+
+  private buildGridLeaves() {
+    const { kit } = this;
+    const o = this.o as FoliageOpts & { tex: LeafTex };
     // blade geometry: x −0.5…0.5 (tapered if baked), y 0…1; UV is the unwarped (x+0.5, y)
     const geo = new THREE.PlaneGeometry(1, 1, o.grid[0], o.grid[1]);
     const pos = geo.attributes.position as THREE.BufferAttribute;
@@ -788,13 +730,13 @@ class Foliage {
     kit.track(geo);
 
     const n = Math.max(1, this.leaves.length);
-    this.shape = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
-    this.dyn = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
-    this.dyn.setUsage(THREE.DynamicDrawUsage);
+    const shape = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
+    const dyn = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
+    dyn.setUsage(THREE.DynamicDrawUsage);
     const ar = new THREE.InstancedBufferAttribute(new Float32Array(n), 1);
     geo.setAttribute("aAr", ar);
-    geo.setAttribute("aShape", this.shape);
-    geo.setAttribute("aDyn", this.dyn);
+    geo.setAttribute("aShape", shape);
+    geo.setAttribute("aDyn", dyn);
 
     const mat = kit.track(
       new THREE.MeshPhysicalMaterial({
@@ -818,25 +760,33 @@ class Foliage {
       })
     );
     patchLeaf(mat, this.uni);
-    this.leafMesh = new THREE.InstancedMesh(geo, mat, n);
-    this.leafMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.leafMesh.frustumCulled = false;
-    this.leafMesh.castShadow = true;
-    this.leafMesh.receiveShadow = true;
+    const leafMesh = new THREE.InstancedMesh(geo, mat, n);
+    leafMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    leafMesh.frustumCulled = false;
+    leafMesh.castShadow = true;
+    leafMesh.receiveShadow = true;
     const depth = kit.track(
       new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: o.opaque ? null : o.tex.map, alphaTest: o.opaque ? 0 : 0.42 })
     );
     patchDepth(depth, this.uni);
-    this.leafMesh.customDepthMaterial = depth;
+    leafMesh.customDepthMaterial = depth;
     this.leaves.forEach((l, i) => {
       // fold and ruffle are given in widths; the blade is scaled by its length in z
       const r = l.o.w / l.o.l;
-      this.shape.setXYZW(i, l.o.shape[0], l.o.shape[1] * r, l.o.shape[2] * r, l.o.shape[3]);
+      shape.setXYZW(i, l.o.shape[0], l.o.shape[1] * r, l.o.shape[2] * r, l.o.shape[3]);
       ar.setX(i, r);
-      this.leafMesh.setColorAt(i, l.o.tint);
+      leafMesh.setColorAt(i, l.o.tint);
+      l.mesh = 0;
+      l.slot = i;
     });
-    this.group.add(this.leafMesh);
+    this.group.add(leafMesh);
+    this.meshes.push(leafMesh);
+    this.dyns.push(dyn);
+    this.meshUni.push(this.uni);
+  }
 
+  private buildStems() {
+    const { kit } = this;
     // stems: constant-radius segments joined by spheres
     let segs = 0;
     for (const c of this.chains) {
@@ -866,9 +816,6 @@ class Foliage {
       }
     }
     this.group.add(this.stemMesh, this.jointMesh);
-    kit.track(this.leafMesh as unknown as { dispose(): void });
-    this.built = true;
-    this.pose();
   }
 
   refresh() {
@@ -906,17 +853,17 @@ class Foliage {
       qr.setFromAxisAngle(AY, l.roll);
       q.copy(frame).multiply(l.restQuat).multiply(qp).multiply(qr);
       l.quat.copy(q);
-      sc.set(l.o.w, l.o.l, l.o.l);
+      if (this.o.scanned) sc.set(l.o.l, l.o.l, l.o.l);
+      else sc.set(l.o.w, l.o.l, l.o.l);
       m.compose(l.pos, l.quat, sc);
-      this.leafMesh.setMatrixAt(l.idx, m);
+      this.meshes[l.mesh].setMatrixAt(l.slot, m);
       // geometric helpers
       const ang = (l.o.shape[0] + l.flex) * 1.0;
       l.tip.set(0, Math.cos(ang), -Math.sin(ang)).multiplyScalar(l.o.l).applyQuaternion(l.quat).add(l.pos);
       l.mid.set(0, 0.5, 0).multiplyScalar(l.o.l).applyQuaternion(l.quat).add(l.pos);
       l.normal.copy(AZ).applyQuaternion(l.quat);
     }
-    this.leafMesh.instanceMatrix.needsUpdate = true;
-    if (this.leafMesh.instanceColor) this.leafMesh.instanceColor.needsUpdate = false;
+    for (const mesh of this.meshes) mesh.instanceMatrix.needsUpdate = true;
 
     // stems
     const up = AY;
@@ -1103,7 +1050,9 @@ class Foliage {
     const target = touched ? 1 : 0;
     this.touchStrength += (target - this.touchStrength) * Math.min(1, dt * (target ? 14 : 8));
     if (touched && touchPoint) {
-      this.uni.uTouchInst.value = touched.idx;
+      this.meshUni.forEach((u, mi) => {
+        u.uTouchInst.value = mi === touched.mesh ? touched.slot : -1;
+      });
       this.uni.uTouch.value.set(touchPoint.x, touchPoint.y, touchPoint.z, 0).applyMatrix4(this.group.matrixWorld);
       this.uni.uTouchDir.value.copy(this.ray!.d).transformDirection(this.group.matrixWorld);
       this.uni.uTouchR.value = 0.03 * this.scale + touched.o.l * 0.08;
@@ -1157,9 +1106,9 @@ class Foliage {
         l.flex = clamp(l.flex + l.vf * h, -1.1, 1.1);
         l.twist = clamp(l.twist + l.vt * h, -0.8, 0.8);
       }
-      this.dyn.setXYZW(l.idx, l.flex, l.twist, l.flutter * (0.6 + 0.4 * Math.sin(t * 0.21 + ph)) * (1 + this.rustleAmt * 2), ph);
+      this.dyns[l.mesh].setXYZW(l.slot, l.flex, l.twist, l.flutter * (0.6 + 0.4 * Math.sin(t * 0.21 + ph)) * (1 + this.rustleAmt * 2), ph);
     }
-    this.dyn.needsUpdate = true;
+    for (const d of this.dyns) d.needsUpdate = true;
   }
 
   asPlant(): Plant {
@@ -1175,7 +1124,6 @@ class Foliage {
 
 /* ================================ helpers ================================ */
 
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const col = (hex: number) => new THREE.Color(hex);
 
 /** n+1 points along a polyline-through-points curve */
@@ -1184,213 +1132,101 @@ function sample(points: THREE.Vector3[], n: number) {
   return curve.getPoints(n);
 }
 
-/** monstera blade outline half-width at v, in units of the blade width */
-const monsteraHalf = (v: number) => {
-  const body = Math.pow(Math.sin(Math.PI * Math.pow(Math.min(1, Math.max(0, v)), 0.62)), 0.85);
-  const lobe = 0.12 * Math.exp(-Math.pow((v - 0.08) / 0.07, 2));
-  return Math.min(0.5, (body + lobe) * 0.46);
-};
 const heartHalf = (v: number) => 0.46 * Math.pow(Math.sin(Math.PI * Math.pow(Math.min(1, Math.max(0, v)), 0.68)), 0.8) + 0.02;
-const bladeHalf = (v: number) => 0.5 * (1 - 0.88 * Math.pow(Math.min(1, Math.max(0, v)), 2.1)) * (0.7 + 0.3 * Math.sin(Math.min(1, v * 6) * 1.57));
 
 /* ================================ plants ================================ */
 
-/**
- * Monstera deliciosa. Thirteen leaves on arching, jointed petioles: big dark
- * mature blades, a few paler younger ones, a rolled new leaf still furled, and
- * two aerial roots. Every petiole is six joints; every blade has its own.
- */
-export function buildMonstera(kit: Kit, seed = 3): Plant {
-  const F = new Foliage(kit, { tex: monsteraTexture(), maxLeaves: 24, grid: [12, 26], halfWidth: monsteraHalf, rough: 0.42, bump: 1.6 }, seed);
-  potAndSoil(kit, F.group, 0.085, 0.14, 0xe6e2d9);
-  kit.addContact(F.group, 0.3, 0.3, { alpha: 0.7 });
-
-  const base = 0.125;
-  const N = 13;
-  const stemGreen = col(0x426a34);
-  const stemTip = col(0x6f9a50);
-  for (let i = 0; i < N; i++) {
-    const k = i / (N - 1); // 0 mature … 1 young
-    const az = i * 2.399963 + (F.rand() - 0.5) * 0.4;
-    const len = lerp(0.285, 0.11, Math.pow(k, 0.8)) * (0.92 + F.rand() * 0.16);
-    const reach = 0.04 + (1 - k) * 0.12 * (0.7 + F.rand() * 0.6);
-    const height = 0.12 + (1 - k) * 0.1 + F.rand() * 0.06 + k * 0.1;
-    const dx = Math.cos(az);
-    const dz = Math.sin(az);
-    const wobX = (F.rand() - 0.5) * 0.01;
-    const wobZ = (F.rand() - 0.5) * 0.01;
-    const ctrl: THREE.Vector3[] = [];
-    for (let s = 0; s <= 5; s++) {
-      const u = s / 5;
-      const radial = reach * Math.pow(1 - Math.cos((u * Math.PI) / 2), 1.1);
-      const y = base + height * Math.pow(Math.sin((u * Math.PI) / 2), 0.9);
-      ctrl.push(new THREE.Vector3(dx * radial + Math.cos(az + 1) * 0.011 * (1 - u) + wobX * u, y, dz * radial + Math.sin(az + 1) * 0.011 * (1 - u) + wobZ * u));
-    }
-    const steps = 9;
-    const pts = sample(ctrl, steps);
-    const rBase = 0.0036 * (0.8 + (1 - k) * 0.5);
-    const chain = F.addChain(pts, {
-      points: pts,
-      radius: (j, n) => rBase * (1 - 0.35 * (j / n)),
-      color: (j, n) => stemGreen.clone().lerp(stemTip, j / n),
-      k: 330 - k * 60,
-      taper: 0.55,
-      zeta: 0.17,
-      wind: 0.8 + k * 0.5,
-    });
-    const last = _a.subVectors(pts[steps], pts[steps - 1]).normalize().clone();
-    const out = new THREE.Vector3(dx, 0, dz);
-    const fwd = last
-      .multiplyScalar(0.3)
-      .addScaledVector(out, 0.4)
-      .addScaledVector(AY, 0.75 + 0.35 * k)
-      .addScaledVector(AZ, -0.5 - 0.3 * k)
-      .normalize();
-    const mature = col(0xffffff).multiplyScalar(0.88 + F.rand() * 0.14);
-    const young = new THREE.Color(1.22, 1.34, 0.92);
-    F.addLeaf({
-      chain,
-      node: steps,
-      fwd,
-      offset: new THREE.Vector3(0, 0, 0),
-      w: len * 0.95,
-      l: len,
-      shape: [lerp(0.95, 0.5, k) + F.rand() * 0.3, 0.12 + F.rand() * 0.12, 0.04 + F.rand() * 0.04, (F.rand() - 0.5) * 0.5],
-      tint: k > 0.75 ? young.clone().lerp(mature, 0.2) : mature,
-      jointK: 120 + k * 70,
-      flexK: 70 + k * 50,
-      flutter: 0.03 + F.rand() * 0.03,
-    });
-  }
-
-  // a rolled new leaf, still furled, rising from the heart
-  {
-    const pts = [0, 1, 2, 3, 4].map((i) => new THREE.Vector3(0.006 + i * 0.002, base + i * 0.04, -0.004 - i * 0.001));
-    F.addChain(pts, {
-      points: pts,
-      radius: (j, n) => 0.0052 * (1 - 0.7 * (j / n)) + 0.0014,
-      color: (j, n) => col(0x7aa94f).lerp(col(0xb4d27a), j / n),
-      k: 150,
-      taper: 0.3,
-      wind: 0.9,
-    });
-  }
-  // two aerial roots, brown and thin, hanging from the stems
-  for (const [x, z, sx] of [
-    [-0.02, 0.016, -1],
-    [0.018, 0.02, 1],
-  ] as const) {
-    const pts = [0, 1, 2, 3, 4].map((i) => new THREE.Vector3(x + sx * i * 0.006, base + 0.02 - i * 0.026, z + i * 0.008));
-    F.addChain(pts, {
-      points: pts,
-      radius: () => 0.0017,
-      color: () => col(0x6b4a2e),
-      k: 45,
-      taper: 0,
-      zeta: 0.25,
-      wind: 1.2,
-    });
-  }
-  F.build();
-  return F.asPlant();
-}
+export type PothosOpts = {
+  seed: number;
+  vines: number;
+  /** nodes along each vine, and leaf size (blade length, m) */
+  nodes: number;
+  leafSize: number;
+  potR: number;
+  potH: number;
+  potColor: number;
+  /** free hang below the rim, m */
+  dropMin: number;
+  dropMax: number;
+  /** vines that, once they reach the surface under the pot, run along it for this far */
+  creep?: number;
+  /** the scanned leaves; without them the flat painted ones are used */
+  lib?: LeafLibrary | null;
+};
 
 /**
- * Trailing pothos: seven vines that arch over the rim and hang under their
- * own weight, a heart leaf at nearly every node. Soft joints, so a touch
- * sets a whole vine swinging.
+ * Trailing pothos: vines that arch over the rim and hang under their own
+ * weight, a heart leaf at nearly every node. Soft joints, so a touch sets a
+ * whole vine swinging. With a leaf library the leaves are the scanned ones.
  */
-export function buildPothos(kit: Kit, seed = 5): Plant {
-  const F = new Foliage(kit, { tex: heartTexture(), maxLeaves: 72, grid: [6, 10], halfWidth: heartHalf, rough: 0.4, bump: 1.0 }, seed);
-  potAndSoil(kit, F.group, 0.045, 0.068, 0xe6e2d9);
-  const vines = 7;
-  const vineCol = col(0x4a6a35);
-  for (let v = 0; v < vines; v++) {
-    const a = (v / vines) * Math.PI * 2 + F.rand() * 0.7;
+export function buildPothos(kit: Kit, o: PothosOpts): Plant {
+  const F = new Foliage(
+    kit,
+    o.lib
+      ? { scanned: o.lib, maxLeaves: o.vines * o.nodes + 8, grid: [4, 6], halfWidth: heartHalf, rough: 0.4, bump: 1 }
+      : { tex: heartTexture(), maxLeaves: o.vines * o.nodes + 8, grid: [6, 10], halfWidth: heartHalf, rough: 0.4, bump: 1.0 },
+    o.seed
+  );
+  potAndSoil(kit, F.group, o.potR, o.potH, o.potColor, 0.55);
+  const vineBase = col(0x3f5a2e);
+  const vineTip = col(0x6f8f47);
+  const top = o.potH * 0.93;
+  for (let v = 0; v < o.vines; v++) {
+    const a = (v / o.vines) * Math.PI * 2 + F.rand() * 0.8;
     const dx = Math.cos(a);
     const dz = Math.sin(a);
-    const out = 0.05 + F.rand() * 0.04;
-    const drop = 0.12 + F.rand() * 0.22;
-    const ctrl: THREE.Vector3[] = [new THREE.Vector3(dx * 0.02, 0.07, dz * 0.02)];
-    for (let s = 1; s <= 7; s++) {
-      const u = s / 7;
-      const rr = 0.02 + out * Math.sin(Math.min(1, u * 1.6) * Math.PI * 0.5) * 1.15;
-      const y = 0.07 + 0.035 * Math.sin(Math.PI * Math.min(1, u * 1.6)) - drop * Math.pow(u, 1.7);
-      const wob = (F.rand() - 0.5) * 0.008;
-      ctrl.push(new THREE.Vector3(dx * rr - dz * wob, y, dz * rr + dx * wob));
+    const drop = o.dropMin + F.rand() * (o.dropMax - o.dropMin);
+    const upright = v % 4 === 3; // a few shoots climb before they fall
+    const ctrl: THREE.Vector3[] = [new THREE.Vector3(dx * o.potR * 0.25, top, dz * o.potR * 0.25)];
+    const steps = 8;
+    for (let s = 1; s <= steps; s++) {
+      const u = s / steps;
+      const rr = o.potR * 0.3 + (o.potR * 0.85 + drop * 0.18) * Math.sin(Math.min(1, u * 1.5) * Math.PI * 0.5);
+      let y = top + (upright ? 0.09 : 0.03) * Math.sin(Math.PI * Math.min(1, u * 1.4)) - drop * Math.pow(u, 1.75);
+      const wob = (F.rand() - 0.5) * 0.012;
+      let px = dx * rr - dz * wob;
+      let pz = dz * rr + dx * wob;
+      if (o.creep && y < 0.007) {
+        // reached the surface: carry on along it
+        y = 0.007 + 0.002 * Math.sin(u * 14 + v);
+        const run = o.creep * (0.4 + F.rand() * 0.6) * (u - 0.6);
+        px += dx * run;
+        pz += dz * run;
+      }
+      ctrl.push(new THREE.Vector3(px, y, pz));
     }
-    const n = 10;
+    const n = o.nodes;
     const pts = sample(ctrl, n);
     const chain = F.addChain(pts, {
       points: pts,
       radius: (j, nn) => 0.0017 * (1 - 0.3 * (j / nn)),
-      color: (j, nn) => vineCol.clone().lerp(col(0x7a9a52), j / nn),
-      k: 38,
+      color: (j, nn) => vineBase.clone().lerp(vineTip, j / nn),
+      k: 34,
       taper: 0.2,
       zeta: 0.2,
-      wind: 1.3,
+      wind: 1.2,
     });
     for (let i = 2; i <= n; i++) {
       const tan = _a.subVectors(pts[Math.min(n, i + 1)], pts[i - 1]).normalize();
       const side = i % 2 ? 1 : -1;
-      const dir = new THREE.Vector3(-tan.z * side, 0, tan.x * side).multiplyScalar(0.8).add(new THREE.Vector3(0, -0.5, 0)).normalize();
-      const size = (0.064 - (i / n) * 0.016) * (0.85 + F.rand() * 0.3);
-      const variegated = F.rand() < 0.3;
+      const dir = new THREE.Vector3(-tan.z * side, 0.0, tan.x * side).multiplyScalar(0.85).add(new THREE.Vector3(0, -0.4, 0)).normalize();
+      const size = o.leafSize * (1.05 - (i / n) * 0.35) * (0.85 + F.rand() * 0.3);
       F.addLeaf({
         chain,
         node: i,
         fwd: dir,
-        upHint: new THREE.Vector3(tan.x, 0.4, tan.z),
-        offset: dir.clone().multiplyScalar(0.006),
-        w: size * 0.88,
+        upHint: new THREE.Vector3(tan.x * 0.4, 1, tan.z * 0.4),
+        offset: dir.clone().multiplyScalar(0.005),
+        w: size * 0.9,
         l: size,
         shape: [0.55 + F.rand() * 0.5, 0.1, 0.04, (F.rand() - 0.5) * 0.4],
-        tint: variegated ? new THREE.Color(1.1, 1.08, 0.82) : col(0xffffff).multiplyScalar(0.88 + F.rand() * 0.2),
-        jointK: 40 + F.rand() * 20,
+        tint: col(0xffffff).multiplyScalar(0.82 + F.rand() * 0.22),
+        jointK: 36 + F.rand() * 18,
         flexK: 50,
-        flutter: 0.05 + F.rand() * 0.03,
+        flutter: 0.04 + F.rand() * 0.03,
+        variant: Math.floor(F.rand() * 99),
       });
     }
-  }
-  F.build();
-  return F.asPlant();
-}
-
-/**
- * Snake plant: nine stiff, upright, twisted blades with a pale margin. Their
- * joints are firm; what you feel is the blade flexing along its length.
- */
-export function buildSnakePlant(kit: Kit, seed = 9): Plant {
-  const F = new Foliage(
-    kit,
-    { tex: bladeTexture(), maxLeaves: 12, grid: [4, 18], halfWidth: bladeHalf, bakeTaper: true, rough: 0.38, bump: 0.8, opaque: true },
-    seed
-  );
-  potAndSoil(kit, F.group, 0.05, 0.075, 0x33353a, 0.55);
-  kit.addContact(F.group, 0.17, 0.17, { alpha: 0.7 });
-  const blades = 9;
-  for (let i = 0; i < blades; i++) {
-    const len = 0.15 + F.rand() * 0.19;
-    const a = (i / blades) * Math.PI * 2 + F.rand() * 0.6;
-    const r = 0.006 + F.rand() * 0.02;
-    const lean = 0.05 + F.rand() * 0.2;
-    const dir = new THREE.Vector3(Math.cos(a) * Math.sin(lean), Math.cos(lean), Math.sin(a) * Math.sin(lean));
-    const p0 = new THREE.Vector3(Math.cos(a) * r, 0.068, Math.sin(a) * r);
-    const pts = [p0, p0.clone().addScaledVector(dir, 0.02), p0.clone().addScaledVector(dir, 0.04)];
-    const chain = F.addChain(pts, { points: pts, radius: () => 0.002, color: () => col(0x2a5a34), k: 320, taper: 0, zeta: 0.2, wind: 0.5, hidden: true });
-    F.addLeaf({
-      chain,
-      node: 2,
-      fwd: dir,
-      upHint: new THREE.Vector3(Math.cos(a + 1.2), 0.2, Math.sin(a + 1.2)),
-      w: 0.034 + F.rand() * 0.012,
-      l: len,
-      shape: [0.08 + F.rand() * 0.25, 0.4, 0, (F.rand() - 0.5) * 1.0],
-      tint: col(0xffffff).multiplyScalar(0.9 + F.rand() * 0.15),
-      jointK: 240,
-      flexK: 80,
-      flutter: 0.012,
-    });
   }
   F.build();
   return F.asPlant();

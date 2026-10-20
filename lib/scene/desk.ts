@@ -9,8 +9,8 @@ import {
   type SketchProgress,
 } from "./textures";
 import { posterDefs } from "./posters";
-import { buildMonstera, buildPothos, buildSnakePlant, type Plant } from "./foliage";
-import { loadPlantModel } from "./plantModels";
+import { buildPothos, type Plant } from "./foliage";
+import { loadLeafLibrary } from "./leafLibrary";
 import {
   buildCable,
   buildKeyboard,
@@ -23,7 +23,7 @@ import {
   woodTexture,
 } from "./hardware";
 import { createScreen } from "./screenUi";
-import { buildClock, buildCup, buildFrame, buildNotebook, buildPencil, type Kit } from "./props";
+import { buildBooks, buildClock, buildCup, buildFrame, buildHeadphones, buildNotebook, buildPencil, type Kit } from "./props";
 
 /**
  * The workspace. One desk, one lamp, one wall, and objects that each have a
@@ -51,6 +51,8 @@ export type DeskState = {
   typed: string;
   /** 0..1 mouse slide (and the on-screen dot with it) */
   mouse: number;
+  /** 0..1 the laptop's screen going from the home view to the code editor */
+  screen: number;
   notebookOpen: number;
   sketch: SketchProgress;
   /** 0..1 3D nodes rising from the page */
@@ -68,6 +70,7 @@ export const NEUTRAL_STATE: DeskState = {
   held: [],
   typed: "",
   mouse: 0,
+  screen: 0,
   notebookOpen: 0,
   sketch: { note: 0, s1: 0, s2: 0, s3: 0 },
   nodes: 0,
@@ -375,15 +378,7 @@ export function buildDesk(opts: {
   clock.group.rotation.y = -0.22;
   group.add(clock.group);
 
-  // plants: a Monstera in the back corner, a snake plant beside the pad
-  const monstera = buildMonstera(kit, 3);
-  monstera.group.position.set(0.5, 0, -0.38);
-  monstera.group.rotation.y = 0.5;
-  monstera.group.scale.setScalar(0.78);
-  group.add(monstera.group);
-  const snake = buildSnakePlant(kit, 9);
-  snake.group.position.set(0.55, 0, -0.1);
-  group.add(snake.group);
+  // plants: trailing pothos, grown in loadPlants() from scanned leaves
   const plantHit = (x: number, y: number, z: number, w: number, h: number, id: string, title: string, note: string) => {
     const m = new THREE.Mesh(
       track(new THREE.BoxGeometry(w, h, w)),
@@ -394,26 +389,46 @@ export function buildDesk(opts: {
     group.add(m);
     return m;
   };
-  const rubberHit = plantHit(0.5, 0.2, -0.38, 0.3, 0.42, "plant-monstera", "Plant", "It leans toward the window that isn't there.");
-  const snakeHit = plantHit(0.55, 0.13, -0.1, 0.1, 0.26, "plant-snake", "Plant", "The one plant that forgives me.");
+  const deskPlantHit = plantHit(0.45, 0.07, -0.34, 0.26, 0.2, "plant-desk", "Pothos", "It leans toward the window that isn't there.");
 
   // ---------- the wall: posters and prints that say who's at the desk ----------
   const WALL_Z = -0.618;
   const defs = posterDefs(opts.fonts);
 
-  // a narrow oak ledge under the triptych: two albums lean on it, a pothos trails off the end
-  const LEDGE = { x: -0.1, y: 0.36, w: 0.5, d: 0.1, t: 0.016 };
+  // a walnut shelf under the triptych, lit from below by a warm strip: two albums, a stack of
+  // books, and a pothos that trails off the end
+  const LEDGE = { x: 0.0, y: 0.36, w: 0.72, d: 0.12, t: 0.022 };
+  const walnutTex = track(woodTexture(false, 4, true));
+  walnutTex.repeat.set(2, 1);
   const ledge = mesh(
-    new RoundedBoxGeometry(LEDGE.w, LEDGE.t, LEDGE.d, 2, 0.004),
-    std({ color: 0xb59a74, roughness: 0.6 })
+    new RoundedBoxGeometry(LEDGE.w, LEDGE.t, LEDGE.d, 3, 0.004),
+    std({ color: 0xffffff, map: walnutTex, roughness: 0.5 })
   );
   ledge.position.set(LEDGE.x, LEDGE.y, WALL_Z + LEDGE.d / 2);
   group.add(ledge);
-  const pothos = buildPothos(kit, 5);
-  pothos.group.position.set(LEDGE.x + LEDGE.w / 2 - 0.08, LEDGE.y + LEDGE.t / 2, WALL_Z + 0.065);
-  pothos.group.scale.setScalar(1);
-  group.add(pothos.group);
-  const pothosHit = plantHit(LEDGE.x + LEDGE.w / 2 - 0.08, LEDGE.y - 0.04, WALL_Z + 0.07, 0.24, 0.34, "plant-pothos", "Haworthia", "Small, slow, and harder to kill than the rest of them.");
+  // the LED strip along its underside, and the wash it throws on the wall below
+  const strip = new THREE.Mesh(
+    track(new THREE.BoxGeometry(LEDGE.w - 0.04, 0.003, 0.006)),
+    track(new THREE.MeshBasicMaterial({ color: 0xffd9a0, toneMapped: false }))
+  );
+  strip.position.set(LEDGE.x, LEDGE.y - LEDGE.t / 2 - 0.0016, WALL_Z + LEDGE.d - 0.022);
+  group.add(strip);
+  const shelfGlow = new THREE.SpotLight(0xffb36b, 0, 1.4, 1.2, 1, 1.6);
+  shelfGlow.position.set(LEDGE.x, LEDGE.y - 0.02, WALL_Z + LEDGE.d - 0.03);
+  shelfGlow.target.position.set(LEDGE.x, LEDGE.y - 0.5, WALL_Z);
+  group.add(shelfGlow, shelfGlow.target);
+  const books = buildBooks(kit);
+  books.position.set(LEDGE.x + 0.11, LEDGE.y + LEDGE.t / 2, WALL_Z + 0.065);
+  books.rotation.y = 0.08;
+  books.scale.setScalar(0.78);
+  group.add(books);
+  // headphones on their stand, at the back right of the desk
+  const phones = buildHeadphones(kit);
+  phones.position.set(0.58, 0, -0.46);
+  phones.rotation.y = -0.5;
+  phones.scale.setScalar(0.8);
+  group.add(phones);
+  const shelfPlantHit = plantHit(LEDGE.x + 0.27, LEDGE.y - 0.1, WALL_Z + 0.08, 0.24, 0.36, "plant-shelf", "Pothos", "Trailing a little further every month.");
 
   const frames = defs.map((d) => {
     const f = buildFrame(kit, {
@@ -622,6 +637,7 @@ export function buildDesk(opts: {
     fill.intensity = 0.8 * clamp(k * 1.5);
     rim.intensity = 0.9 * clamp(k * 1.5);
     wash.intensity = 2.6 * clamp(k);
+    shelfGlow.intensity = 3.2 * clamp(k);
   };
   const setLamp = (v: number) => {
     lampValue = v;
@@ -751,15 +767,16 @@ export function buildDesk(opts: {
   notebook.group.add(nodeGroup);
 
   // ---------- screen content ----------
-  const scr = { sub: 0, typing: false, t0: 0, blink: true, lastBlink: 0, lastPaint: -1, keys: "", t: 0, dirty: true };
+  const scr = { sub: 0, typing: false, t0: 0, blink: true, lastBlink: 0, lastPaint: -1, keys: "", t: 0, mode: 0, dirty: true };
   const repaint = () => {
-    screenUi.paint({ sub: scr.sub, keys: scr.keys, blink: scr.blink, t: scr.t });
+    screenUi.paint({ sub: scr.sub, keys: scr.keys, blink: scr.blink, t: scr.t, mode: scr.mode });
     scr.dirty = false;
   };
   repaint();
 
   // ---------- state application ----------
-  const MOUSE_END = new THREE.Vector3(-0.065, 0, -0.09);
+  // a slight nudge: a few centimetres, enough to send the pointer across the screen
+  const MOUSE_END = new THREE.Vector3(-0.028, 0, -0.04);
   const camHeld = new Set<string>();
   const userHeld = new Set<string>();
   const iceTint = new THREE.Color(0.74, 0.86, 1.05);
@@ -784,6 +801,10 @@ export function buildDesk(opts: {
       scr.keys = s.typed;
       scr.dirty = true;
     }
+    if (Math.abs(s.screen - scr.mode) > 0.004) {
+      scr.mode = s.screen;
+      scr.dirty = true;
+    }
 
     // highlight wave
     if (Math.abs(s.keyWave - lastWave) > 0.002) {
@@ -801,8 +822,8 @@ export function buildDesk(opts: {
     mouse.rotation.y = -0.2 - 0.12 * e;
     arrow.visible = e > 0.001 && lidValue > 0.5;
     // from the middle of the screen toward the dock, in step with the mouse
-    const u = THREE.MathUtils.lerp(0.72, 0.42, e);
-    const v = THREE.MathUtils.lerp(0.7, 0.925, e);
+    const u = THREE.MathUtils.lerp(0.64, 0.465, e);
+    const v = THREE.MathUtils.lerp(0.5, 0.93, e);
     arrow.position.set((u - 0.5) * SW + 0.0035, SCR_Y + (0.5 - v) * SH - 0.0035, 0.0013);
 
     notebook.setOpen(s.notebookOpen);
@@ -842,9 +863,8 @@ export function buildDesk(opts: {
     notebook.hit,
     cup.hit,
     screenHit,
-    rubberHit,
-    snakeHit,
-    pothosHit,
+    deskPlantHit,
+    shelfPlantHit,
     ...frames.map((f) => f.frame.hit),
   ];
 
@@ -916,38 +936,52 @@ export function buildDesk(opts: {
       sheetGeo.computeVertexNormals();
     },
   };
-  // the plants in play: the procedural ones until the scanned models arrive (or for good,
-  // on low-power devices and if they fail to load)
-  let plants: Plant[] = [monstera, snake, pothos];
-  const loadPlants = async () => {
-    if (!high) return;
-    const place = (g: THREE.Group, x: number, y: number, z: number, ry: number, s: number) => {
-      g.position.set(x, y, z);
-      g.rotation.y = ry;
-      g.scale.setScalar(s);
-    };
-    try {
-      const [a, b, c] = await Promise.all([
-        loadPlantModel(kit, { url: "/models/potted_plant_02/potted_plant_02.gltf", baseY: 0.336, hitRadius: 0.04, pokeRadius: 0.13, press: 0.11 }, 1),
-        loadPlantModel(kit, { url: "/models/potted_plant_01/potted_plant_01.gltf", baseY: 0.53, hitRadius: 0.05, pokeRadius: 0.15, press: 0.13 }, 2),
-        loadPlantModel(kit, { url: "/models/potted_plant_04/potted_plant_04.gltf", baseY: 0.155, hitRadius: 0.02, pokeRadius: 0.05, press: 0.035 }, 3),
-      ]);
-      place(a.group, 0.42, 0, -0.4, 0.6, 0.42);
-      place(b.group, 0.6, 0, -0.1, -0.4, 0.3);
-      place(c.group, LEDGE.x + LEDGE.w / 2 - 0.08, LEDGE.y + LEDGE.t / 2, WALL_Z + 0.07, 0.3, 0.62);
-      for (const old of [monstera, snake, pothos]) {
-        group.remove(old.group);
-      }
-      group.add(a.group, b.group, c.group);
-      kit.addContact(a.group, 0.5, 0.5, { alpha: 0.6 });
-      kit.addContact(b.group, 0.4, 0.4, { alpha: 0.6 });
-      plants = [a, b, c];
-      airReady = false;
-    } catch (err) {
-      console.warn("plant models failed to load; keeping the procedural plants", err);
-    }
-  };
+  // the plants in play. Built once the scanned leaves have loaded; if they cannot, the same
+  // vines grow from painted leaves instead.
+  let plants: Plant[] = [];
   let airReady = false;
+  const loadPlants = async () => {
+    let lib = null;
+    if (high) {
+      try {
+        lib = await loadLeafLibrary(kit);
+      } catch (err) {
+        console.warn("scanned leaves failed to load; using painted ones", err);
+      }
+    }
+    const shelf = buildPothos(kit, {
+      seed: 5,
+      vines: 9,
+      nodes: 11,
+      leafSize: 0.07,
+      potR: 0.05,
+      potH: 0.085,
+      potColor: 0xe9e6df,
+      dropMin: 0.16,
+      dropMax: 0.42,
+      lib,
+    });
+    shelf.group.position.set(LEDGE.x + 0.27, LEDGE.y + LEDGE.t / 2, WALL_Z + 0.075);
+    const onDesk = buildPothos(kit, {
+      seed: 11,
+      vines: 10,
+      nodes: 10,
+      leafSize: 0.075,
+      potR: 0.066,
+      potH: 0.12,
+      potColor: 0x1d1e21,
+      dropMin: 0.1,
+      dropMax: 0.2,
+      creep: 0.2,
+      lib,
+    });
+    onDesk.group.position.set(0.45, 0, -0.38);
+    onDesk.group.rotation.y = 0.6;
+    kit.addContact(onDesk.group, 0.3, 0.3, { alpha: 0.7 });
+    group.add(shelf.group, onDesk.group);
+    plants = [shelf, onDesk];
+    airReady = false;
+  };
   const _o = new THREE.Vector3();
   const touch = (ray: { origin: THREE.Vector3; dir: THREE.Vector3 } | null, velocity: THREE.Vector3) => {
     if (!airReady) {

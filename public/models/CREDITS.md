@@ -1,8 +1,5 @@
-# Plant models
+# Leaf model
 
-Scanned/modelled plants from [Poly Haven](https://polyhaven.com/models), released under CC0 (public domain).
-1k texture variants, glTF format.
-
-- `potted_plant_01` — Rico Cilliers
-- `potted_plant_02` — Rico Cilliers
-- `potted_plant_04` — James Ray Cock
+The vines on the desk and shelf grow the leaves of `potted_plant_02`, a scanned plant from
+[Poly Haven](https://polyhaven.com/a/potted_plant_02) by Rico Cilliers, released under CC0 (public domain).
+Only the leaf mesh and its three 1k leaf textures are kept here; the pot and its textures were removed.

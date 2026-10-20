@@ -115,7 +115,7 @@ export function posterDefs(fonts: SceneFonts): PosterDef[] {
     film("forrest-gump", "Forrest Gump", "1994", "#2c4a63", "#f6f1e0", { w: 0.13, h: 0.19, x: 0.62, y: 0.6, finish: "black", tilt: -0.018 }),
     film("stand-by-me", "Stand by Me", "1986", "#2f3d33", "#eef0e0", { w: 0.12, h: 0.18, x: 0.36, y: 0.98, finish: "oak" }),
     // two albums on the ledge, leaning
-    album("punisher", "Phoebe Bridgers", "Phoebe Bridgers (Punisher): the quiet, atmospheric end of rock.", "png", "#1d2a3d", { x: -0.22, y: 0, tilt: 0.03 }),
-    album("grace", "Jeff Buckley", "Jeff Buckley (Grace): the soft, atmospheric end of rock and singer-songwriter music.", "jpg", "#2a2a2a", { x: -0.04, y: 0, tilt: -0.025 }),
+    album("punisher", "Phoebe Bridgers", "Phoebe Bridgers (Punisher): the quiet, atmospheric end of rock.", "png", "#1d2a3d", { x: -0.2, y: 0, tilt: 0.03 }),
+    album("grace", "Jeff Buckley", "Jeff Buckley (Grace): the soft, atmospheric end of rock and singer-songwriter music.", "jpg", "#2a2a2a", { x: -0.05, y: 0, tilt: -0.025 }),
   ];
 }

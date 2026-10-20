@@ -32,9 +32,12 @@ const THIRDS = [739.99, 587.33, 493.88, 554.37];
 
 class Sfx {
   private noise: AudioBuffer | null = null;
+  /** recorded single key presses, loaded the first time sound is on */
+  private samples: AudioBuffer[] = [];
+  private sampleLoad: Promise<void> | null = null;
+  private sampleChain: { ctx: AudioContext; input: AudioNode } | null = null;
   private keyBus: { ctx: AudioContext; input: GainNode } | null = null;
   private hall: { ctx: AudioContext; input: GainNode } | null = null;
-  private lastRustle = 0;
 
   private ready(): Out | null {
     return guitarSynth.output();
@@ -170,10 +173,96 @@ class Sfx {
 
   /* ----------------------------- keyboard ----------------------------- */
 
+  private loadSamples(ctx: AudioContext) {
+    if (this.sampleLoad) return;
+    this.sampleLoad = (async () => {
+      const files = Array.from({ length: 32 }, (_, i) => `/sounds/keys/k${String(i + 1).padStart(2, "0")}.wav`);
+      const out: AudioBuffer[] = [];
+      await Promise.all(
+        files.map(async (f) => {
+          try {
+            const r = await fetch(f);
+            if (!r.ok) return;
+            const buf = await ctx.decodeAudioData(await r.arrayBuffer());
+            // level each recording to the same peak
+            const d = buf.getChannelData(0);
+            let pk = 0;
+            for (let i = 0; i < d.length; i++) pk = Math.max(pk, Math.abs(d[i]));
+            if (pk > 0.001) for (let i = 0; i < d.length; i++) d[i] *= 0.7 / pk;
+            out.push(buf);
+          } catch {
+            /* the synthesised key stays */
+          }
+        })
+      );
+      if (out.length >= 4) this.samples = out;
+    })();
+  }
+
+  /** the recorded keys' own chain: rounder, lower, with a little case around it */
+  private sampleBus(o: Out) {
+    if (this.sampleChain && this.sampleChain.ctx === o.ctx) return this.sampleChain.input;
+    const { ctx, out } = o;
+    const input = ctx.createGain();
+    const low = ctx.createBiquadFilter();
+    low.type = "lowshelf";
+    low.frequency.value = 220;
+    low.gain.value = 6;
+    const dip = ctx.createBiquadFilter();
+    dip.type = "peaking";
+    dip.frequency.value = 2600;
+    dip.Q.value = 0.8;
+    dip.gain.value = -5;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 3400;
+    lp.Q.value = 0.55;
+    input.connect(low).connect(dip).connect(lp);
+    const dry = ctx.createGain();
+    dry.gain.value = 0.9;
+    lp.connect(dry).connect(out);
+    const len = Math.floor(ctx.sampleRate * 0.09);
+    const ir = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let c = 0; c < 2; c++) {
+      const d = ir.getChannelData(c);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.02)) * 0.5;
+    }
+    const conv = ctx.createConvolver();
+    conv.buffer = ir;
+    const wet = ctx.createGain();
+    wet.gain.value = 0.3;
+    lp.connect(conv).connect(wet).connect(out);
+    this.sampleChain = { ctx, input };
+    return input;
+  }
+
+  private playSample(o: Out, rate: number, gain: number, at: number, which?: number) {
+    const buf = this.samples[(which ?? Math.floor(Math.random() * this.samples.length)) % this.samples.length];
+    const bus = this.sampleBus(o);
+    const src = o.ctx.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = rate;
+    const g = o.ctx.createGain();
+    g.gain.value = gain;
+    src.connect(g).connect(bus);
+    src.start(at);
+  }
+
   keyDown(code = "KeyA") {
     const o = this.ready();
     if (!o) return;
     const { ctx } = o;
+    this.loadSamples(ctx);
+    if (this.samples.length) {
+      const t = ctx.currentTime + 0.001;
+      const big = code === "Space" ? 0.7 : WIDE.test(code) ? 0.8 : 0.88;
+      const j = 1 + (Math.random() - 0.5) * 0.06;
+      const vol = 0.85 + Math.random() * 0.25;
+      // the recording, lowered; a lower copy under it for the body of the case
+      this.playSample(o, big * j, 0.75 * vol, t);
+      this.playSample(o, big * 0.68 * j, 0.34 * vol, t, Math.floor(Math.random() * 32));
+      return;
+    }
     const bus = this.keys(o);
     const now = ctx.currentTime + 0.001;
     let h = 0;
@@ -199,6 +288,11 @@ class Sfx {
   keyUp(code = "KeyA") {
     const o = this.ready();
     if (!o) return;
+    if (this.samples.length) {
+      // the upstroke: the same recordings, much quieter and a little higher, a short pock
+      this.playSample(o, (WIDE.test(code) || code === "Space" ? 0.95 : 1.12) * (1 + (Math.random() - 0.5) * 0.08), 0.22, o.ctx.currentTime + 0.001);
+      return;
+    }
     const bus = this.keys(o);
     const now = o.ctx.currentTime + 0.001;
     const pitch = WIDE.test(code) || code === "Space" ? 0.85 : 1;
@@ -324,17 +418,22 @@ class Sfx {
     }
   }
 
-  /** leaves: a light dry rustle, throttled, scaled by how hard the finger is moving */
-  rustle(amount: number) {
-    if (amount < 0.12) return;
+  /** a mouse button: a short, dry, slightly hollow click */
+  click() {
     const o = this.ready();
     if (!o) return;
-    const now = o.ctx.currentTime;
-    if (now - this.lastRustle < 0.07) return;
-    this.lastRustle = now;
-    const a = Math.min(1, amount);
-    this.burst(o, o.out, now, 0.05 + a * 0.07, 3600 + Math.random() * 2600, 0.6, 0.012 + a * 0.05, "bandpass");
-    this.burst(o, o.out, now + 0.012, 0.03, 1700 + Math.random() * 900, 0.8, 0.008 + a * 0.02);
+    this.loadSamples(o.ctx);
+    if (this.samples.length) {
+      // a mouse button is a very small, high key
+      this.playSample(o, 1.45, 0.4, o.ctx.currentTime + 0.001);
+      this.playSample(o, 1.2, 0.18, o.ctx.currentTime + 0.055);
+      return;
+    }
+    const bus = this.keys(o);
+    const now = o.ctx.currentTime + 0.001;
+    this.burst(o, bus, now, 0.012, 2400, 1.4, 0.18);
+    this.tone(o, bus, now, 0.03, 900, 520, 0.12, "sine", 0.001);
+    this.burst(o, bus, now + 0.05, 0.01, 1900, 1.4, 0.09);
   }
 }
 

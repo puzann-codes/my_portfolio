@@ -447,8 +447,8 @@ export function buildKeyboard(kit: Kit, sans: string, mono: string) {
   {
     const p = caseGeo.attributes.position as THREE.BufferAttribute;
     const col = new Float32Array(p.count * 3);
-    const upper = new THREE.Color(0xcfe0f1);
-    const lower = new THREE.Color(0x7fa3cc);
+    const upper = new THREE.Color(0xf4f6f8);
+    const lower = new THREE.Color(0xe0e5ea);
     const c = new THREE.Color();
     for (let i = 0; i < p.count; i++) {
       const y = p.getY(i);
@@ -483,11 +483,12 @@ export function buildKeyboard(kit: Kit, sans: string, mono: string) {
   g.add(deck);
 
   // the well: a dark surround, then the plate with a faint icy backlight
-  const surround = kit.mesh(flatRR(KBW - 0.011, KBD - 0.01, 0.006), kit.track(new THREE.MeshStandardMaterial({ color: 0x0b0f14, roughness: 0.6 })), false, true);
+  const surround = kit.mesh(flatRR(KBW - 0.011, KBD - 0.01, 0.006), kit.track(new THREE.MeshStandardMaterial({ color: 0xcfd6de, roughness: 0.5 })), false, true);
   surround.position.y = 0.0002;
   deck.add(surround);
   const plateMat = kit.track(
-    new THREE.MeshStandardMaterial({ color: 0x141b25, roughness: 0.55, emissive: 0x3f78b4, emissiveIntensity: 0.22 })
+    // the plate is lit: cool white light leaking up between the caps, like an RGB board set to white
+    new THREE.MeshStandardMaterial({ color: 0x2a3340, roughness: 0.5, emissive: 0xdbe8ff, emissiveIntensity: 0.55 })
   );
   const plate = kit.mesh(flatRR(KBW - 0.016, KBD - 0.015, 0.0045), plateMat, false, true);
   plate.position.y = 0.0005;
@@ -516,7 +517,7 @@ export function buildKeyboard(kit: Kit, sans: string, mono: string) {
   const housingGeo = kit.track(new RoundedBoxGeometry(0.0148, 0.0046, 0.0148, 1, 0.0012));
   const housings = new THREE.InstancedMesh(
     housingGeo,
-    kit.track(new THREE.MeshStandardMaterial({ color: 0x232a35, roughness: 0.5 })),
+    kit.track(new THREE.MeshStandardMaterial({ color: 0x9aa7b8, roughness: 0.5, emissive: 0xc9dcff, emissiveIntensity: 0.22 })),
     layout.length
   );
   deck.add(housings);
@@ -529,9 +530,10 @@ export function buildKeyboard(kit: Kit, sans: string, mono: string) {
   const press = new Float32Array(layout.length);
   const target = new Float32Array(layout.length);
   const baseColor: THREE.Color[] = [];
-  const cA = new THREE.Color(0xc6cdd6);
-  const cB = new THREE.Color(0xa9c6e2);
-  const cC = new THREE.Color(0x6f9bcb);
+  const cA = new THREE.Color(0xe6eaee);
+  const cB = new THREE.Color(0xa5c4e6);
+  const cC = new THREE.Color(0x7ca6d2);
+  const pressTint = new THREE.Color(0x8fb8f0);
   const m4 = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const e = new THREE.Euler();
@@ -648,6 +650,37 @@ export function buildKeyboard(kit: Kit, sans: string, mono: string) {
   port.position.set(0, 0.0115, -KBD / 2 - 0.0002);
   g.add(port);
 
+  // underglow: a soft pool of the same white on the desk under the case
+  const glowC = makeCanvas(256, 128);
+  {
+    const x = glowC.getContext("2d")!;
+    x.fillStyle = "rgba(0,0,0,1)";
+    x.fillRect(0, 0, 256, 128);
+    x.shadowColor = "rgba(210,228,255,1)";
+    x.shadowBlur = 26;
+    x.fillStyle = "rgba(210,228,255,0.9)";
+    x.beginPath();
+    x.roundRect(46, 30, 164, 68, 10);
+    x.fill();
+  }
+  const glow = new THREE.Mesh(
+    kit.track(new THREE.PlaneGeometry(KBW + 0.1, (KBW + 0.1) / 2)),
+    kit.track(
+      new THREE.MeshBasicMaterial({
+        map: kit.track(canvasTexture(glowC, 2)),
+        blending: THREE.AdditiveBlending,
+        transparent: true,
+        depthWrite: false,
+        opacity: 0.32,
+        toneMapped: false,
+      })
+    )
+  );
+  glow.rotation.x = -Math.PI / 2;
+  glow.position.y = 0.0006;
+  glow.renderOrder = 2;
+  g.add(glow);
+
   const press01 = (code: string, down: boolean) => {
     const i = index.get(code);
     if (i !== undefined) target[i] = down ? 1 : 0;
@@ -684,15 +717,20 @@ export function buildKeyboard(kit: Kit, sans: string, mono: string) {
     /** springs the keys; returns true if anything moved */
     update(dt: number) {
       let moved = false;
+      let colorDirty = false;
       for (let i = 0; i < press.length; i++) {
         if (press[i] !== target[i]) {
           press[i] += (target[i] - press[i]) * Math.min(1, dt * 26);
           if (Math.abs(press[i] - target[i]) < 0.01) press[i] = target[i];
           writeKey(i);
+          // a pressed key takes the light: it tints toward cool blue as it goes down
+          keyMesh.setColorAt(i, baseColor[i].clone().lerp(pressTint, press[i] * 0.85));
+          colorDirty = true;
           moved = true;
         }
       }
       if (moved) keyMesh.instanceMatrix.needsUpdate = true;
+      if (colorDirty && keyMesh.instanceColor) keyMesh.instanceColor.needsUpdate = true;
       return moved;
     },
     dispose() {
@@ -996,91 +1034,99 @@ export function buildLaptop(kit: Kit, screenTex: THREE.Texture, sans: string) {
 
 /* =============================== mouse ============================ */
 
+function honeycombTexture(W: number, L: number) {
+  const w = 512;
+  const h = Math.round((w * L) / W);
+  const c = makeCanvas(w, h);
+  const x = c.getContext("2d")!;
+  x.fillStyle = "#ffffff";
+  x.fillRect(0, 0, w, h);
+  x.globalCompositeOperation = "destination-out";
+  const R = 17; // hex circumradius, px
+  const dx = R * Math.sqrt(3);
+  const dy = R * 1.5;
+  for (let row = -1; row * dy < h + R; row++) {
+    for (let col = -1; col * dx < w + R; col++) {
+      const cx = col * dx + (row % 2 ? dx / 2 : 0);
+      const cy = row * dy;
+      // only inside the shell's field: a solid rim all round, and a solid bridge for the buttons' split
+      const u = (cx / w - 0.5) / 0.4;
+      const v = (cy / h - 0.5) / 0.455;
+      if (Math.pow(Math.abs(u), 2.6) + Math.pow(Math.abs(v), 2.6) > 1) continue;
+      if (Math.abs(cx / w - 0.5) < 0.012 && cy / h < 0.36) continue;
+      x.beginPath();
+      for (let k = 0; k < 6; k++) {
+        const a = (Math.PI / 3) * k + Math.PI / 6;
+        const px = cx + Math.cos(a) * (R - 3.2);
+        const py = cy + Math.sin(a) * (R - 3.2);
+        if (k === 0) x.moveTo(px, py);
+        else x.lineTo(px, py);
+      }
+      x.closePath();
+      x.fill();
+    }
+  }
+  const t = canvasTexture(c, 8);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 /**
- * A modern ergonomic wireless mouse, in the manner of the sculpted "master"
- * class: a right-hand hump that peaks in the back third, a concave thumb well
- * and a flared thumb rest in dark rubber, split buttons, a metal scroll wheel
- * in a slot, a thumb wheel and two side buttons. About 117 × 85 × 43 mm.
- * Origin on the desk, front toward −z, thumb toward −x.
- *
- * The shell is a polar grid scaled in from a hand-drawn closed outline, so
- * the surface has no creases where offset curves would collapse.
+ * A lightweight honeycomb mouse in the manner of the Gravastar Mercury: a
+ * white shell cut through with hexagons, the whole of it lit from inside by a
+ * cool white glow, a small wheel, a white base on glide skates. About
+ * 120 × 64 × 38 mm. Origin on the desk, front toward −z.
  */
 export function buildMouse(kit: Kit) {
-  const S = 0.9;
-  const ctl: [number, number][] = [
-    [0.0, -0.0615],
-    [0.018, -0.0595],
-    [0.0305, -0.0505],
-    [0.0385, -0.034],
-    [0.0425, -0.012],
-    [0.043, 0.012],
-    [0.0405, 0.034],
-    [0.032, 0.052],
-    [0.018, 0.062],
-    [0.0, 0.0655],
-    [-0.016, 0.0625],
-    [-0.0285, 0.053],
-    [-0.0365, 0.038],
-    [-0.0435, 0.02],
-    [-0.0485, 0.0],
-    [-0.0475, -0.018],
-    [-0.0395, -0.034],
-    [-0.03, -0.049],
-    [-0.016, -0.0585],
-  ];
-  const curve = new THREE.CatmullRomCurve3(
-    ctl.map(([x, z]) => new THREE.Vector3(x * S, 0, z * S)),
-    true,
-    "centripetal"
-  );
-  const NT = 132;
-  const outline = curve.getPoints(NT).slice(0, NT);
-  const cx = -0.002 * S;
-
-  // the crown: height of the top surface at (x, z), before the edge rolls over
-  const crown = (x: number, z: number) => {
-    const zN = clamp((z / S + 0.058) / 0.12);
-    const along = smoothstep(0, 0.55, zN) * (1 - 0.3 * smoothstep(0.62, 1, zN));
-    const hump = 1 - 0.6 * smoothstep(0.012 * S, -0.03 * S, x);
-    let h = 0.0172 + (0.0398 - 0.0172) * along * hump;
-    const dx = (x + 0.021 * S) / (0.012 * S);
-    const dz = (z - 0.006 * S) / (0.028 * S);
-    h -= 0.0068 * Math.exp(-(dx * dx + dz * dz)); // the thumb well
-    return h;
+  const W = 0.064;
+  const L = 0.122;
+  const HT = 0.036;
+  const FRONT_H = 0.019;
+  const hw = W / 2;
+  const hd = L / 2;
+  const NT = 96;
+  const outline = (th: number) => {
+    const c = Math.cos(th);
+    const s = Math.sin(th);
+    const n = s < 0 ? 3.0 : 2.5; // a little squarer at the front
+    return {
+      x: hw * Math.sign(c) * Math.pow(Math.abs(c), 2 / 2.6),
+      z: hd * Math.sign(s) * Math.pow(Math.abs(s), 2 / n),
+    };
   };
-  const rhos = [1, 0.997, 0.99, 0.978, 0.96, 0.935, 0.9, 0.85, 0.79, 0.72, 0.64, 0.55, 0.45, 0.35, 0.25, 0.15, 0.07, 0];
-  const light = new THREE.Color(0x3d424a);
-  const dark = new THREE.Color(0x1a1c20);
-  const colors: number[] = [];
+  const rhos = [1, 0.995, 0.985, 0.97, 0.945, 0.91, 0.865, 0.81, 0.745, 0.67, 0.58, 0.48, 0.37, 0.26, 0.15, 0.06, 0];
+  const crown = (x: number, z: number) => {
+    const t = clamp((z + hd) / L);
+    const along = smoothstep(0, 0.6, t) * (1 - 0.2 * smoothstep(0.72, 1, t));
+    const across = 1 - 0.22 * Math.pow(Math.abs(x) / hw, 2);
+    return (FRONT_H + (HT - FRONT_H) * along) * across;
+  };
   const rings: Ring[] = rhos.map((rho) => {
     const pts: Ring = [];
-    for (const p of outline) {
-      const x = cx + (p.x - cx) * rho;
-      const z = p.z * rho;
+    for (let i = 0; i < NT; i++) {
+      const o = outline((i / NT) * Math.PI * 2);
+      const x = o.x * rho;
+      const z = o.z * rho;
       const e = clamp((1 - rho) / 0.2);
       const roll = Math.sqrt(Math.max(0, 1 - Math.pow(1 - e, 2)));
-      pts.push({ x, y: 0.0035 + (crown(x, z) - 0.0035) * roll, z });
-      // soft-touch top, and a darker rubber grip down the thumb side
-      const m = smoothstep(-0.0275 * S, -0.0305 * S, x) * (1 - 0.5 * smoothstep(0.035, 0.07, z));
-      const c = light.clone().lerp(dark, m);
-      colors.push(c.r, c.g, c.b);
+      const y = 0.004 + (crown(x, z) - 0.004) * roll;
+      pts.push({ x, y, z, u: x / W + 0.5, v: 0.5 - z / L });
     }
     return pts;
   });
   const shellGeo = kit.track(loft(rings, "none"));
-  shellGeo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  const tex = kit.track(honeycombTexture(W, L));
   const shellMat = kit.track(
     new THREE.MeshPhysicalMaterial({
-      color: 0xffffff,
-      vertexColors: true,
-      roughness: 0.58,
+      color: 0xf7f8f9,
+      map: tex,
+      alphaTest: 0.5,
+      alphaToCoverage: true,
+      side: THREE.DoubleSide,
+      roughness: 0.32,
       metalness: 0,
-      sheen: 0.3,
-      sheenRoughness: 0.5,
-      sheenColor: new THREE.Color(0x6f757f),
-      clearcoat: 0.1,
-      clearcoatRoughness: 0.55,
+      clearcoat: 0.5,
+      clearcoatRoughness: 0.25,
     })
   );
   const shell = new THREE.Mesh(shellGeo, shellMat);
@@ -1089,73 +1135,63 @@ export function buildMouse(kit: Kit) {
   const g = new THREE.Group();
   g.add(shell);
 
-  // the base plate
-  const baseRings: Ring[] = [0, 0.0036].map((y) => outline.map((p) => ({ x: cx + (p.x - cx) * 0.985, y, z: p.z * 0.985 })));
-  const baseMat = kit.track(new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.6, metalness: 0.4 }));
-  g.add(new THREE.Mesh(kit.track(loft(baseRings, "top")), baseMat));
-
-  const dk = kit.track(new THREE.MeshStandardMaterial({ color: 0x08090b, roughness: 0.5 }));
-  const surf = (x: number, z: number) => crown(x, z);
-  // split lines: between the two buttons, and across behind them
-  const groove = (pts: [number, number][]) => {
-    const c = new THREE.CatmullRomCurve3(pts.map(([x, z]) => new THREE.Vector3(x, surf(x, z) + 0.0002, z)));
-    const t = new THREE.Mesh(kit.track(new THREE.TubeGeometry(c, 24, 0.00032, 4, false)), dk);
-    g.add(t);
-  };
-  groove([
-    [-0.001, -0.0565],
-    [-0.001, -0.045],
-    [-0.001, -0.032],
-    [-0.001, -0.019],
-    [-0.001, -0.0115],
-  ]);
-  groove([
-    [-0.0235, -0.0125],
-    [-0.012, -0.0105],
-    [-0.001, -0.0095],
-    [0.014, -0.0105],
-    [0.0295, -0.0135],
-  ]);
-
-  // the scroll wheel: a knurled aluminium wheel in a dark slot
-  const wz = -0.033;
-  const wx = -0.001;
-  const slot = kit.mesh(new RoundedBoxGeometry(0.0138, 0.0012, 0.0235, 1, 0.0005), dk, false, false);
-  slot.position.set(wx, surf(wx, wz) + 0.0002, wz);
-  g.add(slot);
-  const wg = new THREE.CylinderGeometry(0.0105, 0.0105, 0.0062, 56, 1, false);
-  const wheel = kit.mesh(
-    wg,
-    kit.track(new THREE.MeshStandardMaterial({ color: 0xb5bac2, metalness: 1, roughness: 0.28 })),
-    false,
-    false
+  // the light inside: a plate under the shell and a ring of it along the base
+  const glowMat = kit.track(new THREE.MeshBasicMaterial({ color: new THREE.Color(0.8, 0.9, 1.0).multiplyScalar(1.15), toneMapped: false }));
+  const innerRings: Ring[] = [0.011, 0.0112].map((y) =>
+    Array.from({ length: NT }, (_, i) => {
+      const o = outline((i / NT) * Math.PI * 2);
+      return { x: o.x * 0.8, y, z: o.z * 0.8 };
+    })
   );
-  wheel.rotation.z = Math.PI / 2;
-  wheel.position.set(wx, surf(wx, wz) + 0.0045 - 0.0105, wz);
-  g.add(wheel);
+  const plate = new THREE.Mesh(kit.track(loft(innerRings, "top")), glowMat);
+  g.add(plate);
+  const ringR: Ring[] = [0.0045, 0.0062].map((y) =>
+    Array.from({ length: NT }, (_, i) => {
+      const o = outline((i / NT) * Math.PI * 2);
+      return { x: o.x * 0.93, y, z: o.z * 0.93 };
+    })
+  );
+  g.add(new THREE.Mesh(kit.track(loft(ringR, "none")), glowMat));
 
-  // thumb wheel, in the rubber of the rest, and two side buttons above it
-  const tx = -0.0345;
-  const tz = -0.004;
-  const twg = new THREE.CylinderGeometry(0.0082, 0.0082, 0.0052, 40);
-  const twMat = kit.track(new THREE.MeshStandardMaterial({ color: 0xaeb3bb, roughness: 0.34, metalness: 1 }));
-  const tw = kit.mesh(twg, twMat, false, false);
-  tw.rotation.z = Math.PI / 2 + 0.5;
-  tw.position.set(tx - 0.0012, surf(tx, tz) - 0.0036, tz);
-  g.add(tw);
-  const sbMat = kit.track(new THREE.MeshStandardMaterial({ color: 0x585d66, roughness: 0.4, metalness: 0.3 }));
-  for (const z of [-0.0225, -0.0405]) {
-    const x = -0.0285;
-    const b = kit.mesh(new RoundedBoxGeometry(0.0042, 0.0042, 0.0155, 1, 0.0016), sbMat, false, false);
-    b.position.set(x, surf(x, z) + 0.0002, z);
-    b.rotation.z = 0.3;
-    g.add(b);
+  // base plate and skates
+  const baseMat = kit.track(new THREE.MeshStandardMaterial({ color: 0xf1f2f4, roughness: 0.4, metalness: 0.1 }));
+  const baseRings: Ring[] = [0, 0.0042].map((y) =>
+    Array.from({ length: NT }, (_, i) => {
+      const o = outline((i / NT) * Math.PI * 2);
+      return { x: o.x * 0.985, y, z: o.z * 0.985 };
+    })
+  );
+  g.add(new THREE.Mesh(kit.track(loft(baseRings, "top")), baseMat));
+  const skate = kit.track(new RoundedBoxGeometry(0.012, 0.0014, 0.03, 1, 0.0006));
+  const skateMat = kit.track(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 }));
+  for (const [x, z] of [
+    [-0.02, -0.035],
+    [0.02, -0.035],
+    [-0.018, 0.035],
+    [0.018, 0.035],
+  ]) {
+    const sk = new THREE.Mesh(skate, skateMat);
+    sk.position.set(x, -0.0003, z);
+    g.add(sk);
   }
 
-  g.position.y = 0.0006;
+  // the wheel, with a ring of light
+  const wz = -0.032;
+  const wy = crown(0, wz) - 0.0035;
+  const wheelMat = kit.track(new THREE.MeshStandardMaterial({ color: 0xf5f6f8, roughness: 0.3, metalness: 0.2 }));
+  const wheel = new THREE.Mesh(kit.track(new THREE.CylinderGeometry(0.0085, 0.0085, 0.0065, 40)), wheelMat);
+  wheel.rotation.z = Math.PI / 2;
+  wheel.position.set(0, wy, wz);
+  g.add(wheel);
+  const hub = new THREE.Mesh(kit.track(new THREE.CylinderGeometry(0.0055, 0.0055, 0.0072, 24)), glowMat);
+  hub.rotation.z = Math.PI / 2;
+  hub.position.copy(wheel.position);
+  g.add(hub);
+
+  g.position.y = 0.0007;
   const holder = new THREE.Group();
   holder.add(g);
-  kit.addContact(holder, 0.115, 0.15, { alpha: 0.65, y: 0.0003 });
+  kit.addContact(holder, 0.095, 0.15, { alpha: 0.6, y: 0.0003 });
   return holder;
 }
 
@@ -1402,14 +1438,14 @@ export function buildCable(kit: Kit, pts: THREE.Vector3[], color: number, r = 0.
 /* ============================ textures ============================ */
 
 /** Oak grain, light and slightly warm. `vertical` runs the grain top to bottom. */
-export function woodTexture(vertical: boolean, seed = 5) {
+export function woodTexture(vertical: boolean, seed = 5, walnut = false) {
   const S = 512;
   const c = makeCanvas(S, S);
   const x = c.getContext("2d")!;
   const base = x.createLinearGradient(0, 0, vertical ? S : 0, vertical ? 0 : S);
-  base.addColorStop(0, "#c8a572");
-  base.addColorStop(0.5, "#bf9b66");
-  base.addColorStop(1, "#c9a877");
+  base.addColorStop(0, walnut ? "#5a3d28" : "#c8a572");
+  base.addColorStop(0.5, walnut ? "#4d3322" : "#bf9b66");
+  base.addColorStop(1, walnut ? "#5c402b" : "#c9a877");
   x.fillStyle = base;
   x.fillRect(0, 0, S, S);
   let a = seed * 9301 + 49297;

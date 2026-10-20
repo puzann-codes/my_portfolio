@@ -15,6 +15,8 @@ export type ScreenState = {
   keys: string;
   blink: boolean;
   t: number;
+  /** 0..1 how far the home view has given way to the code editor */
+  mode: number;
 };
 
 const SANS = '-apple-system, "SF Pro Text", "Inter", system-ui, "Helvetica Neue", Arial, sans-serif';
@@ -403,6 +405,135 @@ function paintStatic(ctx: CanvasRenderingContext2D, hero: string, projects: stri
   ctx.stroke();
 }
 
+/** the editor: the project list as the code it really is, and a terminal waiting for a name */
+function paintEditor(ctx: CanvasRenderingContext2D, projects: string[], s: ScreenState) {
+  const x0 = 24;
+  const y0 = 48;
+  const w = W - 48;
+  const h = 676;
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, s.mode * 1.15);
+  ctx.fillStyle = "#0b0e14";
+  roundRect(ctx, x0, y0, w, h, 14);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.1)";
+  roundRect(ctx, x0 + 0.5, y0 + 0.5, w - 1, h - 1, 14);
+  ctx.stroke();
+  ctx.save();
+  roundRect(ctx, x0, y0, w, h, 14);
+  ctx.clip();
+
+  // title bar
+  ctx.fillStyle = "rgba(255,255,255,0.04)";
+  ctx.fillRect(x0, y0, w, 38);
+  ["#ff5f57", "#febc2e", "#28c840"].forEach((c, i) => {
+    ctx.fillStyle = c;
+    ctx.globalAlpha = 0.8 * Math.min(1, s.mode * 1.15);
+    ctx.beginPath();
+    ctx.arc(x0 + 24 + i * 22, y0 + 19, 6.5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = Math.min(1, s.mode * 1.15);
+  ctx.textAlign = "center";
+  ctx.font = `500 13px ${MONO}`;
+  ctx.fillStyle = "rgba(244,244,240,0.5)";
+  ctx.fillText("projects.ts — pujan.dev", x0 + w / 2, y0 + 24);
+
+  // sidebar
+  const sbw = 230;
+  ctx.fillStyle = "rgba(255,255,255,0.025)";
+  ctx.fillRect(x0, y0 + 38, sbw, h - 38);
+  ctx.textAlign = "left";
+  ctx.font = `500 15px ${MONO}`;
+  const tree: [string, number, boolean][] = [
+    ["app", 0, false],
+    ["components", 0, false],
+    ["data", 0, false],
+    ["projects.ts", 1, true],
+    ["lib", 0, false],
+    ["scene", 1, false],
+    ["journey.ts", 1, false],
+  ];
+  tree.forEach(([name, depth, active], i) => {
+    const y = y0 + 38 + 34 + i * 30;
+    if (active) {
+      ctx.fillStyle = "rgba(143,184,255,0.14)";
+      ctx.fillRect(x0, y - 20, sbw, 28);
+    }
+    ctx.fillStyle = active ? "#f4f4f0" : "rgba(244,244,240,0.55)";
+    ctx.fillText((depth === 0 ? "▸ " : "   ") + name, x0 + 20 + depth * 14, y);
+  });
+
+  // tab + code
+  const cx = x0 + sbw;
+  ctx.fillStyle = "rgba(255,255,255,0.05)";
+  ctx.fillRect(cx, y0 + 38, w - sbw, 36);
+  ctx.fillStyle = "#f4f4f0";
+  ctx.font = `500 14px ${MONO}`;
+  ctx.fillText("projects.ts", cx + 20, y0 + 61);
+  ctx.fillStyle = ICE;
+  ctx.fillRect(cx + 8, y0 + 72, 112, 2);
+
+  const slug = (t: string) => t.toLowerCase().replace(/ū/g, "u").replace(/ā/g, "a").replace(/\s+/g, "-");
+  type Tok = [string, string];
+  const KW = "#c792ea";
+  const STR = "#a5d6a0";
+  const ID = "#8fb8ff";
+  const TX = "rgba(244,244,240,0.85)";
+  const lines: Tok[][] = [
+    [["export const ", KW], ["TOP_PROJECTS", ID], [": Project[] = [", TX]],
+    ...projects.map((p): Tok[] => [
+      ["  { ", TX],
+      ["slug", ID],
+      [": ", TX],
+      [`"${slug(p)}"`, STR],
+      [", ", TX],
+      ["title", ID],
+      [": ", TX],
+      [`"${p}"`, STR],
+      [" },", TX],
+    ]),
+    [["];", TX]],
+  ];
+  ctx.font = `500 18px ${MONO}`;
+  lines.forEach((toks, i) => {
+    const y = y0 + 38 + 36 + 46 + i * 30;
+    ctx.fillStyle = "rgba(244,244,240,0.28)";
+    ctx.textAlign = "right";
+    ctx.fillText(String(i + 1), cx + 60, y);
+    ctx.textAlign = "left";
+    let x = cx + 84;
+    for (const [t, c] of toks) {
+      ctx.fillStyle = c;
+      ctx.fillText(t, x, y);
+      x += ctx.measureText(t).width;
+    }
+  });
+
+  // terminal pane
+  const ty = y0 + h - 168;
+  ctx.fillStyle = "rgba(255,255,255,0.035)";
+  ctx.fillRect(cx, ty, w - sbw, 168);
+  ctx.fillStyle = "rgba(255,255,255,0.09)";
+  ctx.fillRect(cx, ty, w - sbw, 1);
+  ctx.font = `600 12px ${SANS}`;
+  ctx.letterSpacing = "2.5px";
+  ctx.fillStyle = "rgba(244,244,240,0.5)";
+  ctx.fillText("TERMINAL", cx + 24, ty + 28);
+  ctx.letterSpacing = "0px";
+  ctx.font = `500 22px ${MONO}`;
+  const py = ty + 82;
+  ctx.fillStyle = ICE;
+  ctx.fillText("❯", cx + 24, py);
+  ctx.fillStyle = "#f4f4f0";
+  ctx.fillText(s.keys, cx + 58, py);
+  const kw = ctx.measureText(s.keys).width;
+  ctx.fillStyle = s.blink ? "#f4f4f0" : "rgba(244,244,240,0.4)";
+  ctx.fillRect(cx + 58 + kw + 3, py - 19, 12, 25);
+  ctx.restore();
+  ctx.restore();
+}
+
 export function createScreen(opts: { hero: string; projects: string[] }) {
   const canvas = makeCanvas(W, H);
   const ctx = canvas.getContext("2d")!;
@@ -475,6 +606,18 @@ export function createScreen(opts: { hero: string; projects: string[] }) {
     ctx.strokeStyle = "rgba(143,184,255,0.85)";
     ctx.lineWidth = 1.8;
     ctx.stroke();
+
+    if (s.mode > 0.003) {
+      paintEditor(ctx, opts.projects, s);
+      // the dock icon that was clicked, still lit
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, s.mode * 1.2);
+      ctx.strokeStyle = ICE;
+      ctx.lineWidth = 2;
+      roundRect(ctx, 565 - 3, 752 - 3, 54, 54, 14);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     texture.needsUpdate = true;
   };

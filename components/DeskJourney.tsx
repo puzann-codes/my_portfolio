@@ -230,13 +230,9 @@ export default function DeskJourney({ go, onLoad, onUnsupported }: Props) {
           },
           onHover: (info) => setTip(info ? { title: info.title } : null),
           onLampOn: () => guitarSynth.click(),
-          onKeyTick: () => {
-            // the choreography's own keystrokes: a plausible letter, pressed and let go
-            const code = "Key" + "ASDFGHJKLQWERTYUIOP"[Math.floor(Math.random() * 19)];
-            sfx.keyDown(code);
-            setTimeout(() => sfx.keyUp(code), 70 + Math.random() * 50);
-          },
-          onFoliage: (_touching, rustle) => sfx.rustle(rustle),
+          // the choreography's own keystrokes, and the click that opens the code
+          onKey: (code, down) => (down ? sfx.keyDown(code) : sfx.keyUp(code)),
+          onClick: () => sfx.click(),
         });
       } catch (err) {
         console.warn("desk journey failed to start", err);
